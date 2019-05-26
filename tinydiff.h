@@ -45,9 +45,9 @@ public:
     size_t getRank() const;
 
 protected:
-    class Impl;
-    std::shared_ptr<Impl> m_impl;
-    Function(std::shared_ptr<Impl> impl);
+    class Substance;
+    std::shared_ptr<Substance> m_sub;
+    Function(std::shared_ptr<Substance> sub);
 };
 
 // --------------------------- Implemented Functions ---------------------------
@@ -79,9 +79,9 @@ public:
     void addGrad(float grad);
 
 private:
-    class Impl;
-    std::shared_ptr<Impl> m_impl;
-    Variable(std::shared_ptr<Impl> impl);
+    class Substance;
+    std::shared_ptr<Substance> m_sub;
+    Variable(std::shared_ptr<Substance> sub);
 };
 
 // --------------------------------- Operators ---------------------------------
@@ -89,7 +89,7 @@ std::ostream& operator<<(std::ostream& os, Variable& x);
 
 // *****************************************************************************
 // *****************************************************************************
-// ************************** Begin of Implementation **************************
+// **************************** Begin of Definitions ***************************
 // *****************************************************************************
 // *****************************************************************************
 
@@ -137,177 +137,11 @@ std::vector<float> GetGrads(const Variables& src) {
 }
 
 // =============================================================================
-// =============================== Function Impl ===============================
+// ============================ Function Definition ============================
 // =============================================================================
-class Function::Impl : public std::enable_shared_from_this<Function::Impl> {
-public:
-    Impl() {}
-    Impl(const Impl& lhs) {}
-    Impl(Impl&&) = delete;
-    Impl& operator=(const Impl& lhs) {
-        return *this;
-    }
-    Impl& operator=(Impl&&) = delete;
-    virtual ~Impl() {}
+Function::Function() : m_sub(std::make_shared<Substance>()) {}
 
-    void clear() {
-        m_rank = 0;
-        m_inputs = Variables();
-        m_outputs = Variables();
-    }
-
-    Variables operator()(const Variables& x) {
-        // Forward (with variable conversion)
-        auto&& x_data = CvtFromVariables(x);
-        auto&& y_data = forward(std::move(x_data));    // with free
-        auto&& y = CvtToVariables(std::move(y_data));  // with free
-        // Retain input/output variables
-        m_inputs = x;
-        m_outputs = y;
-        // Set rank of this function
-        m_rank = 0;
-        for (auto&& x_elem : x) {
-            size_t rank = x_elem.getCreator().getRank();
-            m_rank = std::max(m_rank, rank);
-        }
-
-        // Build chain
-        for (auto&& y_elem : y) {
-            y_elem.setCreator(Function(shared_from_this()));
-        }
-
-        return y;
-    }
-
-    virtual std::vector<float> forward(const std::vector<float>& x) {
-        throw std::runtime_error("Invalid use of tinydiff::Function");
-    }
-
-    virtual std::vector<float> backward(const std::vector<float>& x,
-                                        const std::vector<float>& y,
-                                        const std::vector<float>& gy) {
-        throw std::runtime_error("Invalid use of tinydiff::Function");
-    }
-
-    Variables getInputs() const {
-        return m_inputs;
-    }
-
-    Variables getOutputs() const {
-        return m_outputs;
-    }
-
-    void setRank(size_t rank) {
-        m_rank = rank;
-    }
-
-    size_t getRank() const {
-        return m_rank;
-    }
-
-private:
-    size_t m_rank = 0;
-    Variables m_inputs;
-    Variables m_outputs;
-};
-
-// =============================================================================
-// =============================== Variable Impl ===============================
-// =============================================================================
-class Variable::Impl {
-public:
-    Impl() {}
-    Impl(float v) : m_v(v) {}
-    Impl(const Impl& lhs) {}
-    Impl(Impl&&) = delete;
-    Impl& operator=(const Impl& lhs) {
-        return *this;
-    }
-    Impl& operator=(Impl&&) = delete;
-    ~Impl() {}
-
-    float data() const {
-        return m_v;
-    }
-
-    float grad() const {
-        return m_grad;
-    }
-
-    void backward() {
-        // Set the last gradients 'one'
-        for (auto&& output: m_creator.getOutputs()) {
-            output.addGrad(1.f);
-        }
-
-        // Ordered storage to resolve
-        std::map<size_t, Function> cand_funcs;
-        // Register the last node
-        cand_funcs[m_creator.getRank()] = m_creator;
-        // Resolving loop
-        while (!cand_funcs.empty()) {
-            // Get highest rank function
-            auto&& last_func = PopLast(cand_funcs);
-            // Ignore no connected function (already resolved)
-            if (last_func.getRank() == 0) {
-                continue;
-            }
-            // Call backward
-            auto&& inputs = last_func.getInputs();
-            auto&& outputs = last_func.getOutputs();
-            auto&& inputs_data = CvtFromVariables(inputs);
-            auto&& outputs_data = CvtFromVariables(outputs);
-            auto&& out_grads = GetGrads(outputs);
-            auto&& in_grads =
-                    last_func.backward(inputs_data, outputs_data, out_grads);
-            assert(inputs.size() == in_grads.size());
-            // Accumulate gradients
-            for (size_t i = 0; i < inputs.size(); i++) {
-                inputs[i].addGrad(in_grads[i]);
-            }
-            // Track chain
-            for (size_t i = 0; i < inputs.size(); i++) {
-                auto&& func = inputs[i].getCreator();
-                if (0 < func.getRank()) {
-                    cand_funcs[func.getRank()] = func;
-                }
-            }
-            // Remove chain (set rank 0)
-            last_func.clear();
-        }
-    }
-
-    void setCreator(Function f) {
-        m_creator = f;
-        f.setRank(f.getRank() + 1);  // Increase rank
-    }
-
-    Function getCreator() const {
-        return m_creator;
-    }
-
-    void addGrad(float grad) {
-        m_grad += grad;
-    }
-
-private:
-    float m_v;
-    float m_grad = 0.f;
-    Function m_creator;
-};
-
-// --------------------------------- Operators ---------------------------------
-
-std::ostream& operator<<(std::ostream& os, Variable& x) {
-    return os << x.data();
-}
-
-// =============================================================================
-// =========================== Function Impl Pattern ===========================
-// =============================================================================
-Function::Function() : m_impl(std::make_shared<Impl>()) {}
-
-Function::Function(std::shared_ptr<Impl> impl) : m_impl(impl) {}
+Function::Function(std::shared_ptr<Substance> sub) : m_sub(sub) {}
 
 Function::Function(const Function& lhs) = default;  // shallow copy
 
@@ -319,48 +153,85 @@ Function& Function::operator=(Function&&) = default;
 
 Function::~Function() = default;
 
+// --------------------------------- Substance ---------------------------------
+class Function::Substance {
+public:
+    virtual std::vector<float> forward(const std::vector<float>& x) {
+        throw std::runtime_error("Invalid use of tinydiff::Function");
+    }
+    virtual std::vector<float> backward(const std::vector<float>& x,
+                                const std::vector<float>& y,
+                                const std::vector<float>& gy) {
+        throw std::runtime_error("Invalid use of tinydiff::Function");
+    }
+
+    size_t rank = 0;
+    Variables inputs;
+    Variables outputs;
+};
+
+// ---------------------------------- Methods ----------------------------------
 void Function::clear() {
-    m_impl->clear();
+    m_sub = std::make_shared<Substance>();
 }
 
 Variables Function::operator()(const Variables& x) {
-    return (*m_impl)(x);
+    // Forward (with variable conversion)
+    auto&& x_data = CvtFromVariables(x);
+    auto&& y_data = forward(std::move(x_data));    // with free
+    auto&& y = CvtToVariables(std::move(y_data));  // with free
+    // Retain input/output variables
+    m_sub->inputs = x;
+    m_sub->outputs = y;
+    // Set rank of this function
+    m_sub->rank = 0;
+    for (auto&& x_elem : x) {
+        size_t rank = x_elem.getCreator().getRank();
+        m_sub->rank = std::max(m_sub->rank, rank);
+    }
+
+    // Build chain
+    for (auto&& y_elem : y) {
+        y_elem.setCreator(m_sub);
+    }
+
+    return y;
 }
 
 std::vector<float> Function::forward(const std::vector<float>& x) {
-    return m_impl->forward(x);
+    return m_sub->forward(x);
 }
 
 std::vector<float> Function::backward(const std::vector<float>& x,
                                       const std::vector<float>& y,
                                       const std::vector<float>& gy) {
-    return m_impl->backward(x, y, gy);
+    return m_sub->backward(x, y, gy);
 }
 
 Variables Function::getInputs() const {
-    return m_impl->getInputs();
+    return m_sub->inputs;
 }
 
 Variables Function::getOutputs() const {
-    return m_impl->getOutputs();
+    return m_sub->outputs;
 }
 
 void Function::setRank(size_t rank) {
-    m_impl->setRank(rank);
+    m_sub->rank = rank;
 }
 
 size_t Function::getRank() const {
-    return m_impl->getRank();
+    return m_sub->rank;
 }
 
 // =============================================================================
-// =========================== Variable Impl Pattern ===========================
+// ============================ Variable Definition ============================
 // =============================================================================
-Variable::Variable() : m_impl(std::make_shared<Impl>()) {}
+Variable::Variable() : m_sub(std::make_shared<Substance>()) {}
 
-Variable::Variable(std::shared_ptr<Impl> impl) : m_impl(impl) {}
+Variable::Variable(std::shared_ptr<Substance> sub) : m_sub(sub) {}
 
-Variable::Variable(float v) : m_impl(std::make_shared<Impl>(v)) {}
+Variable::Variable(float v) : m_sub(std::make_shared<Substance>(v)) {}
 
 Variable::Variable(const Variable& lhs) = default;  // shallow copy
 
@@ -372,28 +243,85 @@ Variable& Variable::operator=(Variable&&) = default;
 
 Variable::~Variable() = default;
 
+// --------------------------------- Substance ---------------------------------
+class Variable::Substance {
+public:
+    Substance() {}
+    Substance(float v) : v(v) {}
+    float v;
+    float grad = 0.f;
+    Function creator;
+};
+
+// ---------------------------------- Methods ----------------------------------
 float Variable::data() const {
-    return m_impl->data();
+    return m_sub->v;
 }
 
 float Variable::grad() const {
-    return m_impl->grad();
+    return m_sub->grad;
 }
 
 void Variable::backward() {
-    return m_impl->backward();
+    // Set the last gradients 'one'
+    for (auto&& output : m_sub->creator.getOutputs()) {
+        output.addGrad(1.f);
+    }
+
+    // Ordered storage to resolve
+    std::map<size_t, Function> cand_funcs;
+    // Register the last node
+    cand_funcs[m_sub->creator.getRank()] = m_sub->creator;
+    // Resolving loop
+    while (!cand_funcs.empty()) {
+        // Get highest rank function
+        auto&& last_func = PopLast(cand_funcs);
+        // Ignore no connected function (already resolved)
+        if (last_func.getRank() == 0) {
+            continue;
+        }
+        // Call backward
+        auto&& inputs = last_func.getInputs();
+        auto&& outputs = last_func.getOutputs();
+        auto&& inputs_data = CvtFromVariables(inputs);
+        auto&& outputs_data = CvtFromVariables(outputs);
+        auto&& out_grads = GetGrads(outputs);
+        auto&& in_grads =
+                last_func.backward(inputs_data, outputs_data, out_grads);
+        assert(inputs.size() == in_grads.size());
+        // Accumulate gradients
+        for (size_t i = 0; i < inputs.size(); i++) {
+            inputs[i].addGrad(in_grads[i]);
+        }
+        // Track chain
+        for (size_t i = 0; i < inputs.size(); i++) {
+            auto&& func = inputs[i].getCreator();
+            if (0 < func.getRank()) {
+                cand_funcs[func.getRank()] = func;
+            }
+        }
+        // Remove chain (set rank 0)
+        last_func.clear();
+    }
 }
 
 void Variable::setCreator(Function f) {
-    m_impl->setCreator(f);
+    m_sub->creator = f;
+    f.setRank(f.getRank() + 1);  // Increase rank
 }
 
 Function Variable::getCreator() const {
-    return m_impl->getCreator();
+    return m_sub->creator;
 }
 
 void Variable::addGrad(float grad) {
-    m_impl->addGrad(grad);
+    m_sub->grad += grad;
+}
+
+// --------------------------------- Operators ---------------------------------
+
+std::ostream& operator<<(std::ostream& os, Variable& x) {
+    return os << x.data();
 }
 
 // =============================================================================
@@ -404,9 +332,10 @@ namespace F {
 
 class Add : public Function {
 public:
-    class Impl : public Function::Impl {
+    virtual ~Add() {}
+    class Substance : public Function::Substance {
     public:
-        virtual ~Impl() {}
+        virtual ~Substance() {}
         virtual std::vector<float> forward(const std::vector<float>& x) {
             CheckSize(x, 2);
             return {x[0] + x[1]};
@@ -420,15 +349,17 @@ public:
             return {gy[0], gy[0]};
         }
     };
-
     Add() {
-        m_impl = std::make_shared<Impl>();
+        m_sub = std::make_shared<Substance>();
     }
 };
 
 class Mul : public Function {
 public:
-    class Impl : public Function::Impl {
+    virtual ~Mul() {}
+    class Substance : public Function::Substance {
+    public:
+        virtual ~Substance() {}
         virtual std::vector<float> forward(const std::vector<float>& x) {
             CheckSize(x, 2);
             return {x[0] * x[1]};
@@ -442,9 +373,8 @@ public:
             return {gy[0] * x[1], gy[0] * x[0]};
         }
     };
-
     Mul() {
-        m_impl = std::make_shared<Impl>();
+        m_sub = std::make_shared<Substance>();
     }
 };
 //
