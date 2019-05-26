@@ -6,15 +6,13 @@ int main(int argc, char const* argv[]) {
     Variable a(10.f);
     Variable b(20.f);
 
-    F::Add add1;
-    F::Add add2;
-    F::Mul mul;
-    F::Exp exp;
-
-    auto a2 = exp({a})[0];
-    auto c = add1({a2, b})[0];
-    auto d = mul({c, b})[0];
-    auto e = add2({d, a})[0];
+    Variable c, d, e;
+    {
+        auto a2 = F::exp(a);
+        c = a2 + b;
+        d = c * b;
+        e = d + a;
+    }
 
     std::cout << a.data() << std::endl;
     std::cout << b.data() << std::endl;
@@ -29,7 +27,6 @@ int main(int argc, char const* argv[]) {
     std::cout << c.grad() << std::endl;
     std::cout << d.grad() << std::endl;
     std::cout << e.grad() << std::endl;
-
 
     return 0;
 }
