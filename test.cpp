@@ -8,10 +8,10 @@ int main(int argc, char const* argv[]) {
 
     Variable c, d, e;
     {
-        auto a2 = F::exp(a);
+        Variable a2 = F::exp(a);
         c = a2 + b;
         d = c * b;
-        e = d + a;
+        e = d * a;
     }
 
     std::cout << a.data() << std::endl;
@@ -20,7 +20,7 @@ int main(int argc, char const* argv[]) {
     std::cout << d.data() << std::endl;
     std::cout << e.data() << std::endl;
 
-    d.backward();
+    e.backward();
 
     std::cout << a.grad() << std::endl;
     std::cout << b.grad() << std::endl;

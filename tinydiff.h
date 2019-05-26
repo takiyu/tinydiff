@@ -11,9 +11,9 @@
 
 namespace tinydiff {
 
-class Function;
 class Variable;
 using Variables = std::vector<Variable>;
+class Function;
 
 // =============================================================================
 // ================================== Variable =================================
@@ -65,7 +65,6 @@ public:
     // Build computational graph with forwarding
     Variables operator()(const Variables& x);
 
-    // Inherited by functional classes
     std::vector<float> forward(const std::vector<float>& x);
     std::vector<float> backward(const std::vector<float>& x,
                                 const std::vector<float>& y,
@@ -207,8 +206,9 @@ void Variable::backward() {
         auto&& inputs_data = CvtFromVariables(inputs);
         auto&& outputs_data = CvtFromVariables(outputs);
         auto&& out_grads = GetGrads(outputs);
-        auto&& in_grads =
-                last_func.backward(inputs_data, outputs_data, out_grads);
+        auto&& in_grads = last_func.backward(
+                std::move(inputs_data), std::move(outputs_data),
+                std::move(out_grads));  // with free
         assert(inputs.size() == in_grads.size());
         // Accumulate gradients
         for (size_t i = 0; i < inputs.size(); i++) {
