@@ -9,8 +9,10 @@ int main(int argc, char const* argv[]) {
     F::Add add1;
     F::Add add2;
     F::Mul mul;
+    F::Exp exp;
 
-    auto c = add1({a, b})[0];
+    auto a2 = exp({a})[0];
+    auto c = add1({a2, b})[0];
     auto d = mul({c, b})[0];
     auto e = add2({d, a})[0];
 

@@ -106,7 +106,7 @@ V PopLast(std::map<K, V>& m) {
     auto&& last_itr = std::prev(m.end());
     V last = last_itr->second;
     m.erase(last_itr);
-    return std::move(last);
+    return last;
 }
 
 std::vector<float> CvtFromVariables(const Variables& src) {
@@ -115,7 +115,7 @@ std::vector<float> CvtFromVariables(const Variables& src) {
     for (auto&& s_elem : src) {
         ret.emplace_back(s_elem.data());
     }
-    return std::move(ret);
+    return ret;
 }
 
 Variables CvtToVariables(const std::vector<float>& src) {
@@ -124,7 +124,7 @@ Variables CvtToVariables(const std::vector<float>& src) {
     for (auto&& s_elem : src) {
         ret.emplace_back(Variable(s_elem));
     }
-    return std::move(ret);
+    return ret;
 }
 
 std::vector<float> GetGrads(const Variables& src) {
@@ -133,7 +133,7 @@ std::vector<float> GetGrads(const Variables& src) {
     for (auto&& s_elem : src) {
         ret.emplace_back(s_elem.grad());
     }
-    return std::move(ret);
+    return ret;
 }
 
 // =============================================================================
@@ -160,8 +160,8 @@ public:
         throw std::runtime_error("Invalid use of tinydiff::Function");
     }
     virtual std::vector<float> backward(const std::vector<float>& x,
-                                const std::vector<float>& y,
-                                const std::vector<float>& gy) {
+                                        const std::vector<float>& y,
+                                        const std::vector<float>& gy) {
         throw std::runtime_error("Invalid use of tinydiff::Function");
     }
 
@@ -195,7 +195,7 @@ Variables Function::operator()(const Variables& x) {
         y_elem.setCreator(m_sub);
     }
 
-    return y;
+    return std::move(y);
 }
 
 std::vector<float> Function::forward(const std::vector<float>& x) {
@@ -332,6 +332,7 @@ namespace F {
 
 class Add : public Function {
 public:
+    Add() : Function(std::make_shared<Substance>()) {}
     virtual ~Add() {}
     class Substance : public Function::Substance {
     public:
@@ -349,13 +350,11 @@ public:
             return {gy[0], gy[0]};
         }
     };
-    Add() {
-        m_sub = std::make_shared<Substance>();
-    }
 };
 
 class Mul : public Function {
 public:
+    Mul() : Function(std::make_shared<Substance>()) {}
     virtual ~Mul() {}
     class Substance : public Function::Substance {
     public:
@@ -373,27 +372,29 @@ public:
             return {gy[0] * x[1], gy[0] * x[0]};
         }
     };
-    Mul() {
-        m_sub = std::make_shared<Substance>();
-    }
 };
-//
-// class Exp {
-// public:
-//     virtual Variables forward(const Variables& x) {
-//         CheckSize(x, 1);
-//         m_y = std::exp(x[0].data());
-//         return {m_y};
-//     }
-//     virtual Variables backward(const Variables& x, const Variables& gy) {
-//         CheckSize(x, 1);
-//         CheckSize(gy, 1);
-//         return {gy[0].data() * m_y};
-//     }
-//
-// private:
-//     float m_y;
-// };
+
+class Exp : public Function {
+public:
+    Exp() : Function(std::make_shared<Substance>()) {}
+    virtual ~Exp() {}
+    class Substance : public Function::Substance {
+    public:
+        virtual ~Substance() {}
+        virtual std::vector<float> forward(const std::vector<float>& x) {
+            CheckSize(x, 1);
+            return {std::exp(x[0])};
+        }
+        virtual std::vector<float> backward(const std::vector<float>& x,
+                                            const std::vector<float>& y,
+                                            const std::vector<float>& gy) {
+            CheckSize(x, 1);
+            CheckSize(y, 1);
+            CheckSize(gy, 1);
+            return {gy[0] * y[0]};
+        }
+    };
+};
 
 }  // namespace F
 
