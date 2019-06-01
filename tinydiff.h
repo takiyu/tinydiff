@@ -11,9 +11,33 @@
 
 namespace tinydiff {
 
+class NdArray;
 class Variable;
 using Variables = std::vector<Variable>;
 class Function;
+
+// =============================================================================
+// ================================== NdArray ==================================
+// =============================================================================
+class NdArray {
+public:
+    NdArray();
+    NdArray(float v);
+
+    NdArray(const NdArray&);
+    NdArray(NdArray&&);
+    NdArray& operator=(const NdArray&);
+    NdArray& operator=(NdArray&&);
+    ~NdArray();
+
+    float data() const;
+
+    class Substance;
+
+private:
+    std::shared_ptr<Substance> m_sub;
+    NdArray(std::shared_ptr<Substance> sub);
+};
 
 // =============================================================================
 // ================================== Variable =================================
@@ -143,6 +167,33 @@ std::vector<float> GetGrads(const Variables& src) {
     }
     return ret;
 }
+
+// =============================================================================
+// ============================ NdArray Definition =============================
+// =============================================================================
+NdArray::NdArray() : m_sub(std::make_shared<Substance>()) {}
+
+NdArray::NdArray(std::shared_ptr<Substance> sub) : m_sub(sub) {}
+
+NdArray::NdArray(float v) : m_sub(std::make_shared<Substance>(v)) {}
+
+NdArray::NdArray(const NdArray& lhs) = default;  // shallow copy
+
+NdArray::NdArray(NdArray&&) = default;  // move
+
+NdArray& NdArray::operator=(const NdArray& lhs) = default;  // shallow copy
+
+NdArray& NdArray::operator=(NdArray&&) = default;
+
+NdArray::~NdArray() = default;
+
+// --------------------------------- Substance ---------------------------------
+class NdArray::Substance {
+public:
+    Substance() {}
+    Substance(float v) : v(v) {}
+    float v;
+};
 
 // =============================================================================
 // ============================ Variable Definition ============================
