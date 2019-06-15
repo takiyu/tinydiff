@@ -17,6 +17,13 @@ int main(int argc, char const* argv[]) {
     }
 
     {
+        auto&& a = NdArray::Zeros({2, 5});
+        auto&& b = NdArray::Ones({2, 5});
+        std::cout << a << std::endl;
+        std::cout << b << std::endl;
+    }
+
+    {
         Variable a(10.f);
         Variable b(20.f);
 

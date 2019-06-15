@@ -32,7 +32,8 @@ public:
     NdArray(const Shape& shape);
     NdArray(const Shape& shape, float fill_v);
 
-    static NdArray Zeros(const Shape& shape);  // TODO
+    static NdArray Empty(const Shape& shape);
+    static NdArray Zeros(const Shape& shape);
     static NdArray Ones(const Shape& shape);
 
     size_t size() const;
@@ -247,7 +248,7 @@ public:
     std::unique_ptr<float[]> v;
 };
 
-// ---------------------------------- Methods ----------------------------------
+// -------------------------------- Constructors -------------------------------
 NdArray::NdArray(const Shape& shape) {
     // Compute total size
     size_t size = 1;
@@ -260,9 +261,23 @@ NdArray::NdArray(const Shape& shape) {
 
 NdArray::NdArray(const Shape& shape, float fill_v) : NdArray(shape) {
     // Fill after initialize
-    std::fill_n(m_sub->v.get(), fill_v, m_sub->size);
+    std::fill_n(m_sub->v.get(), m_sub->size, fill_v);
 }
 
+// ------------------------------- Static Methods ------------------------------
+NdArray NdArray::Empty(const Shape& shape) {
+    return NdArray(shape);
+}
+
+NdArray NdArray::Zeros(const Shape& shape) {
+    return NdArray(shape, 0.f);
+}
+
+NdArray NdArray::Ones(const Shape& shape) {
+    return NdArray(shape, 1.f);
+}
+
+// ---------------------------------- Methods ----------------------------------
 size_t NdArray::size() const {
     return m_sub->size;
 }
