@@ -7,12 +7,13 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <sstream>
 #include <vector>
 
 namespace tinydiff {
 
 class NdArray;
-using Shape = std::vector<size_t>;
+using Shape = std::vector<int>;
 class Variable;
 using Variables = std::vector<Variable>;
 class Function;
@@ -40,6 +41,8 @@ public:
     const Shape& shape() const;
     float* data();
     const float* data() const;
+
+    NdArray reshape(const Shape& shape) const;
 
     class Substance;
 
@@ -180,8 +183,8 @@ std::vector<float> GetGrads(const Variables& src) {
     return ret;
 }
 
-void OutputArrayLine(std::ostream& os, const float* &data, size_t size) {
-    os << "["; // Begin of a line
+void OutputArrayLine(std::ostream& os, const float*& data, size_t size) {
+    os << "[";  // Begin of a line
     for (size_t i = 0; i < size; i++) {
         os << *(data++);  // Output an element
         if (i == size - 1) {
@@ -192,7 +195,7 @@ void OutputArrayLine(std::ostream& os, const float* &data, size_t size) {
     }
 }
 
-void OutputArrayMultiDim(std::ostream& os, const float* &data,
+void OutputArrayMultiDim(std::ostream& os, const float*& data,
                          const Shape& shape, size_t depth) {
     for (size_t i = 0; i < shape[depth]; i++) {
         // Heading
@@ -242,10 +245,12 @@ class NdArray::Substance {
 public:
     Substance() {}
     Substance(size_t size, const Shape& shape)
-        : size(size), shape(shape), v(new float[size]) {}
+        : size(size),
+          shape(shape),
+          v(new float[size], std::default_delete<float[]>()) {}
     size_t size = 0;
     Shape shape = {0};
-    std::unique_ptr<float[]> v;
+    std::shared_ptr<float> v;  // C++17: Replace with `shared_ptr<float[]>`.
 };
 
 // -------------------------------- Constructors -------------------------------
@@ -292,6 +297,43 @@ float* NdArray::data() {
 
 const float* NdArray::data() const {
     return m_sub->v.get();
+}
+
+NdArray NdArray::reshape(const Shape& shape) const {
+    // Check shape validity
+    size_t unknown_idx = shape.size();
+    size_t size = 1;
+    for (size_t i = 0; i < shape.size(); i++) {
+        if (shape[i] < 0) {
+            if (unknown_idx != shape.size()) {
+                throw std::runtime_error("Invalid shape format (multi-neg)");
+            } else {
+                unknown_idx = i;
+            }
+        } else {
+            size *= shape[i];
+        }
+    }
+    Shape new_shape = shape;
+    if (unknown_idx == shape.size()) {
+        if (m_sub->size != size) {
+            std::stringstream ss;
+            ss << "Invalid reshape (" << m_sub->size << "->" << size << ")";
+            throw std::runtime_error(ss.str());
+        }
+    } else {
+        if (m_sub->size % size != 0) {
+            throw std::runtime_error("Invalid reshape (-1)");
+        }
+        new_shape[unknown_idx] = m_sub->size / size;
+    }
+
+    // Create reshaped array
+    NdArray ret;
+    ret.m_sub->size = m_sub->size;  // Same size
+    ret.m_sub->shape = new_shape;   // New shape
+    ret.m_sub->v = m_sub->v;        // Shared elements
+    return ret;
 }
 
 // --------------------------------- Operators ---------------------------------

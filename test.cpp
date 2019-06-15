@@ -14,6 +14,9 @@ int main(int argc, char const* argv[]) {
         std::cout << c << std::endl;
         std::cout << d << std::endl;
         std::cout << e << std::endl;
+
+        auto&& f = c.reshape({3, -1});
+        std::cout << f << std::endl;
     }
 
     {
