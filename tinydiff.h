@@ -12,6 +12,7 @@
 namespace tinydiff {
 
 class NdArray;
+using Shape = std::vector<size_t>;
 class Variable;
 using Variables = std::vector<Variable>;
 class Function;
@@ -22,15 +23,22 @@ class Function;
 class NdArray {
 public:
     NdArray();
-    NdArray(float v);
-
     NdArray(const NdArray&);
     NdArray(NdArray&&);
     NdArray& operator=(const NdArray&);
     NdArray& operator=(NdArray&&);
     ~NdArray();
 
-    float data() const;
+    NdArray(const Shape& shape);
+    NdArray(const Shape& shape, float fill_v);
+
+    static NdArray Zeros(const Shape& shape);  // TODO
+    static NdArray Ones(const Shape& shape);
+
+    size_t size() const;
+    const Shape& shape() const;
+    float* data();
+    const float* data() const;
 
     class Substance;
 
@@ -38,6 +46,9 @@ private:
     std::shared_ptr<Substance> m_sub;
     NdArray(std::shared_ptr<Substance> sub);
 };
+
+// --------------------------------- Operators ---------------------------------
+std::ostream& operator<<(std::ostream& os, NdArray& x);
 
 // =============================================================================
 // ================================== Variable =================================
@@ -168,14 +179,52 @@ std::vector<float> GetGrads(const Variables& src) {
     return ret;
 }
 
+void OutputArrayLine(std::ostream& os, const float* &data, size_t size) {
+    os << "["; // Begin of a line
+    for (size_t i = 0; i < size; i++) {
+        os << *(data++);  // Output an element
+        if (i == size - 1) {
+            os << "]";  // End of a line
+        } else {
+            os << ", ";  // Splitter of an element
+        }
+    }
+}
+
+void OutputArrayMultiDim(std::ostream& os, const float* &data,
+                         const Shape& shape, size_t depth) {
+    for (size_t i = 0; i < shape[depth]; i++) {
+        // Heading
+        if (i == 0) {
+            os << "[";  // begin of array
+        } else {
+            for (size_t d = 0; d < depth + 1; d++) {  // array indent
+                os << " ";
+            }
+        }
+
+        // Output internal array
+        if (depth == shape.size() - 2) {
+            OutputArrayLine(os, data, shape[depth + 1]);
+        } else {
+            OutputArrayMultiDim(os, data, shape, depth + 1);
+        }
+
+        // Tailing
+        if (i == shape[depth] - 1) {
+            os << "]";  // End of array
+        } else {
+            os << ", " << std::endl;  // Splitter of array
+        }
+    }
+}
+
 // =============================================================================
 // ============================ NdArray Definition =============================
 // =============================================================================
 NdArray::NdArray() : m_sub(std::make_shared<Substance>()) {}
 
 NdArray::NdArray(std::shared_ptr<Substance> sub) : m_sub(sub) {}
-
-NdArray::NdArray(float v) : m_sub(std::make_shared<Substance>(v)) {}
 
 NdArray::NdArray(const NdArray& lhs) = default;  // shallow copy
 
@@ -191,9 +240,63 @@ NdArray::~NdArray() = default;
 class NdArray::Substance {
 public:
     Substance() {}
-    Substance(float v) : v(v) {}
-    float v;
+    Substance(size_t size, const Shape& shape)
+        : size(size), shape(shape), v(new float[size]) {}
+    size_t size = 0;
+    Shape shape = {0};
+    std::unique_ptr<float[]> v;
 };
+
+// ---------------------------------- Methods ----------------------------------
+NdArray::NdArray(const Shape& shape) {
+    // Compute total size
+    size_t size = 1;
+    for (auto&& s : shape) {
+        size *= s;
+    }
+    // Create substance
+    m_sub = std::make_shared<Substance>(size, shape);
+}
+
+NdArray::NdArray(const Shape& shape, float fill_v) : NdArray(shape) {
+    // Fill after initialize
+    std::fill_n(m_sub->v.get(), fill_v, m_sub->size);
+}
+
+size_t NdArray::size() const {
+    return m_sub->size;
+}
+
+const Shape& NdArray::shape() const {
+    return m_sub->shape;
+}
+
+float* NdArray::data() {
+    return m_sub->v.get();
+}
+
+const float* NdArray::data() const {
+    return m_sub->v.get();
+}
+
+// --------------------------------- Operators ---------------------------------
+std::ostream& operator<<(std::ostream& os, NdArray& x) {
+    const size_t size = x.size();
+    const Shape& shape = x.shape();
+    const float* data = x.data();
+
+    if (size == 0 || shape.size() == 0) {
+        // Empty
+        os << "[]";
+    } else if (shape.size() == 1) {
+        // 1-dim
+        OutputArrayLine(os, data, size);
+    } else {
+        // Multi-dim
+        OutputArrayMultiDim(os, data, shape, 0);
+    }
+    return os;
+}
 
 // =============================================================================
 // ============================ Variable Definition ============================
