@@ -14,9 +14,11 @@ namespace tinydiff {
 
 class NdArray;
 using Shape = std::vector<int>;
+using Index = std::vector<int>;
 class Variable;
 using Variables = std::vector<Variable>;
 class Function;
+
 
 // =============================================================================
 // ================================== NdArray ==================================
@@ -45,6 +47,16 @@ public:
     const float* data() const;
 
     NdArray reshape(const Shape& shape) const;
+
+    float& operator[](int i);
+    const float& operator[](int i) const;
+    float& operator[](const Index& index);
+    const float& operator[](const Index& index) const;
+
+    template <typename... I>
+    float& operator()(I... index);
+    template <typename... I>
+    const float& operator()(I... index) const;
 
     class Substance;
 
@@ -301,7 +313,7 @@ NdArray NdArray::Arange(float start, float stop, float step) {
     return ret;
 }
 
-// ---------------------------------- Methods ----------------------------------
+// ------------------------------- Basic Methods -------------------------------
 size_t NdArray::size() const {
     return m_sub->size;
 }
@@ -318,6 +330,7 @@ const float* NdArray::data() const {
     return m_sub->v.get();
 }
 
+// ------------------------------- Reshape Method ------------------------------
 NdArray NdArray::reshape(const Shape& shape) const {
     // Check shape validity
     size_t unknown_idx = shape.size();
@@ -353,6 +366,56 @@ NdArray NdArray::reshape(const Shape& shape) const {
     ret.m_sub->shape = new_shape;   // New shape
     ret.m_sub->v = m_sub->v;        // Shared elements
     return ret;
+}
+
+// ------------------------------- Index Methods -------------------------------
+float& NdArray::operator[](int i) {
+    // Use the same implementation of constant method.
+    return const_cast<float&>(static_cast<const NdArray&>(*this)[i]);
+}
+
+const float& NdArray::operator[](int i) const {
+    const size_t idx =
+            (0 <= i) ? static_cast<size_t>(i) :
+                       m_sub->size + static_cast<size_t>(i);  // Negative index
+    // Direct access
+    return *(m_sub->v.get() + idx);
+}
+
+float& NdArray::operator[](const Index& index) {
+    // Use the same implementation of constant method.
+    return const_cast<float&>(static_cast<const NdArray&>(*this)[index]);
+}
+
+const float& NdArray::operator[](const Index& index) const {
+    const auto& shape = m_sub->shape;
+    if (index.size() != shape.size()) {
+        throw std::runtime_error("Invalid index size");
+    }
+    // Compute flatten index
+    int i = 0;
+    for (size_t d = 0; d < index.size(); d++) {
+        // Compute `i = i * shape + index` recurrently
+        i *= shape[d];
+        if (0 <= index[d]) {
+            i += index[d];  // Positive index
+        } else {
+            i += shape[d] + index[d];  // Negative index
+        }
+    }
+    return (*this)[i];
+}
+
+template <typename... I>
+float& NdArray::operator()(I... index) {
+    // Pass to operator[]
+    return (*this)[{index...}];
+}
+
+template <typename... I>
+const float& NdArray::operator()(I... index) const {
+    // Use the same implementation of constant method.
+    return const_cast<float&>(static_cast<const NdArray&>(*this)(index...));
 }
 
 // --------------------------------- Operators ---------------------------------
