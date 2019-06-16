@@ -19,7 +19,6 @@ class Variable;
 using Variables = std::vector<Variable>;
 class Function;
 
-
 // =============================================================================
 // ================================== NdArray ==================================
 // =============================================================================
@@ -153,6 +152,7 @@ Variable exp(Variable x);
 // **************************** Begin of Definitions ***************************
 // *****************************************************************************
 // *****************************************************************************
+#ifdef TINYDIFF_IMPLEMENTATION
 
 // ----------------------------- Utilities -------------------------------------
 template <typename T>
@@ -417,6 +417,36 @@ const float& NdArray::operator()(I... index) const {
     // Use the same implementation of constant method.
     return const_cast<float&>(static_cast<const NdArray&>(*this)(index...));
 }
+
+// ---------------------- Template Method Specializations ----------------------
+// Assuming up to 10 dimensions.
+// For `operator()(I... index)`
+template float& NdArray::operator()(int);
+template float& NdArray::operator()(int, int);
+template float& NdArray::operator()(int, int, int);
+template float& NdArray::operator()(int, int, int, int);
+template float& NdArray::operator()(int, int, int, int, int);
+template float& NdArray::operator()(int, int, int, int, int, int);
+template float& NdArray::operator()(int, int, int, int, int, int, int);
+template float& NdArray::operator()(int, int, int, int, int, int, int, int);
+template float& NdArray::operator()(int, int, int, int, int, int, int, int,
+                                    int);
+template float& NdArray::operator()(int, int, int, int, int, int, int, int, int,
+                                    int);
+// For `operator()(I... index) const`
+template float& NdArray::operator()(int) const;
+template float& NdArray::operator()(int, int) const;
+template float& NdArray::operator()(int, int, int) const;
+template float& NdArray::operator()(int, int, int, int) const;
+template float& NdArray::operator()(int, int, int, int, int) const;
+template float& NdArray::operator()(int, int, int, int, int, int) const;
+template float& NdArray::operator()(int, int, int, int, int, int, int) const;
+template float& NdArray::operator()(int, int, int, int, int, int, int,
+                                    int) const;
+template float& NdArray::operator()(int, int, int, int, int, int, int, int,
+                                    int) const;
+template float& NdArray::operator()(int, int, int, int, int, int, int, int, int,
+                                    int) const;
 
 // --------------------------------- Operators ---------------------------------
 std::ostream& operator<<(std::ostream& os, const NdArray& x) {
@@ -721,6 +751,8 @@ Variable exp(Variable x) {
 }
 
 }  // namespace F
+
+#endif  // TINYDIFF_IMPLEMENTATION
 
 }  // namespace tinydiff
 

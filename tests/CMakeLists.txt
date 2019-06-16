@@ -85,8 +85,15 @@ endfunction(setup_target_simple)
 # ----------------------------- Internal Libraries -----------------------------
 # ------------------------------------------------------------------------------
 
-# Executable file for tests
+# Executable file for tests (one c++ file)
 add_executable(tinydiff_tests
-    ${CMAKE_CURRENT_SOURCE_DIR}/test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_total.cpp
 )
 setup_target(tinydiff_tests "" "")
+
+# Executable file for tests (separated c++ files)
+add_executable(tinydiff_tests_separated
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_separated_1.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_separated_2.cpp
+)
+setup_target(tinydiff_tests_separated "" "")
