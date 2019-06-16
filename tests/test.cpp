@@ -13,16 +13,18 @@ static void RequireNdArray(const NdArray& m, const std::string& str) {
 
 TEST_CASE("NdArray") {
     SECTION("Empty/Ones/Zeros") {
-        const auto m1 = NdArray::Empty({2, 5});
-        const auto m2 = NdArray::Zeros({2, 5});
-        const auto m3 = NdArray::Ones({2, 5});
+        const NdArray m1({2, 5});
+        const auto m2 = NdArray::Empty({2, 5});
+        const auto m3 = NdArray::Zeros({2, 5});
+        const auto m4 = NdArray::Ones({2, 5});
         REQUIRE(m1.shape() == Shape{2, 5});
         REQUIRE(m2.shape() == Shape{2, 5});
         REQUIRE(m3.shape() == Shape{2, 5});
-        RequireNdArray(m2,
+        REQUIRE(m4.shape() == Shape{2, 5});
+        RequireNdArray(m3,
                        "[[0, 0, 0, 0, 0],\n"
                        " [0, 0, 0, 0, 0]]");
-        RequireNdArray(m3,
+        RequireNdArray(m4,
                        "[[1, 1, 1, 1, 1],\n"
                        " [1, 1, 1, 1, 1]]");
     }
@@ -41,22 +43,29 @@ TEST_CASE("NdArray") {
 
     SECTION("Reshape") {
         auto m1 = NdArray::Arange(12.f);
-        RequireNdArray(m1, "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]");
         auto m2 = m1.reshape({3, 4});
+        auto m3 = m2.reshape({2, -1});
+        auto m4 = m3.reshape({2, 2, -1});
+        RequireNdArray(m1, "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]");
         RequireNdArray(m2,
                        "[[0, 1, 2, 3],\n"
                        " [4, 5, 6, 7],\n"
                        " [8, 9, 10, 11]]");
-        auto m3 = m2.reshape({2, -1});
         RequireNdArray(m3,
                        "[[0, 1, 2, 3, 4, 5],\n"
                        " [6, 7, 8, 9, 10, 11]]");
+        RequireNdArray(m4,
+                       "[[[0, 1, 2],\n"
+                       "  [3, 4, 5]],\n"
+                       " [[6, 7, 8],\n"
+                       "  [9, 10, 11]]]");
     }
 
     SECTION("Reshape with value change") {
         auto m1 = NdArray::Arange(12.f);
         auto m2 = m1.reshape({3, 4});
         auto m3 = m2.reshape({2, -1});
+        auto m4 = m3.reshape({2, 2, -1});
         m1.data()[0] = -1.f;
         RequireNdArray(m1, "[-1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]");
         RequireNdArray(m2,
@@ -66,6 +75,17 @@ TEST_CASE("NdArray") {
         RequireNdArray(m3,
                        "[[-1, 1, 2, 3, 4, 5],\n"
                        " [6, 7, 8, 9, 10, 11]]");
+        RequireNdArray(m4,
+                       "[[[-1, 1, 2],\n"
+                       "  [3, 4, 5]],\n"
+                       " [[6, 7, 8],\n"
+                       "  [9, 10, 11]]]");
+    }
+
+    SECTION("Reshape invalid") {
+        auto m1 = NdArray::Arange(12.f);
+        REQUIRE_THROWS(m1.reshape({5, 2}));
+        REQUIRE_THROWS(m1.reshape({-1, -1}));
     }
 }
 
