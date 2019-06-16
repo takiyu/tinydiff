@@ -36,6 +36,8 @@ public:
     static NdArray Empty(const Shape& shape);
     static NdArray Zeros(const Shape& shape);
     static NdArray Ones(const Shape& shape);
+    static NdArray Arange(float stop);
+    static NdArray Arange(float start, float stop, float step = 1.f);
 
     size_t size() const;
     const Shape& shape() const;
@@ -52,7 +54,7 @@ private:
 };
 
 // --------------------------------- Operators ---------------------------------
-std::ostream& operator<<(std::ostream& os, NdArray& x);
+std::ostream& operator<<(std::ostream& os, const NdArray& x);
 
 // =============================================================================
 // ================================== Variable =================================
@@ -156,7 +158,7 @@ V PopLast(std::map<K, V>& m) {
     return last;
 }
 
-std::vector<float> CvtFromVariables(const Variables& src) {
+static std::vector<float> CvtFromVariables(const Variables& src) {
     std::vector<float> ret;
     ret.reserve(src.size());
     for (auto&& s_elem : src) {
@@ -165,7 +167,7 @@ std::vector<float> CvtFromVariables(const Variables& src) {
     return ret;
 }
 
-Variables CvtToVariables(const std::vector<float>& src) {
+static Variables CvtToVariables(const std::vector<float>& src) {
     Variables ret;
     ret.reserve(src.size());
     for (auto&& s_elem : src) {
@@ -174,7 +176,7 @@ Variables CvtToVariables(const std::vector<float>& src) {
     return ret;
 }
 
-std::vector<float> GetGrads(const Variables& src) {
+static std::vector<float> GetGrads(const Variables& src) {
     std::vector<float> ret;
     ret.reserve(src.size());
     for (auto&& s_elem : src) {
@@ -183,7 +185,7 @@ std::vector<float> GetGrads(const Variables& src) {
     return ret;
 }
 
-void OutputArrayLine(std::ostream& os, const float*& data, size_t size) {
+static void OutputArrayLine(std::ostream& os, const float*& data, size_t size) {
     os << "[";  // Begin of a line
     for (size_t i = 0; i < size; i++) {
         os << *(data++);  // Output an element
@@ -195,9 +197,9 @@ void OutputArrayLine(std::ostream& os, const float*& data, size_t size) {
     }
 }
 
-void OutputArrayMultiDim(std::ostream& os, const float*& data,
-                         const Shape& shape, size_t depth) {
-    for (size_t i = 0; i < shape[depth]; i++) {
+static void OutputArrayMultiDim(std::ostream& os, const float*& data,
+                                const Shape& shape, size_t depth) {
+    for (size_t i = 0; i < static_cast<size_t>(shape[depth]); i++) {
         // Heading
         if (i == 0) {
             os << "[";  // begin of array
@@ -209,16 +211,16 @@ void OutputArrayMultiDim(std::ostream& os, const float*& data,
 
         // Output internal array
         if (depth == shape.size() - 2) {
-            OutputArrayLine(os, data, shape[depth + 1]);
+            OutputArrayLine(os, data, static_cast<size_t>(shape[depth + 1]));
         } else {
             OutputArrayMultiDim(os, data, shape, depth + 1);
         }
 
         // Tailing
-        if (i == shape[depth] - 1) {
+        if (i == static_cast<size_t>(shape[depth]) - 1) {
             os << "]";  // End of array
         } else {
-            os << ", " << std::endl;  // Splitter of array
+            os << "," << std::endl;  // Splitter of array
         }
     }
 }
@@ -244,10 +246,10 @@ NdArray::~NdArray() = default;
 class NdArray::Substance {
 public:
     Substance() {}
-    Substance(size_t size, const Shape& shape)
-        : size(size),
-          shape(shape),
-          v(new float[size], std::default_delete<float[]>()) {}
+    Substance(size_t size_, const Shape& shape_)
+        : size(size_),
+          shape(shape_),
+          v(new float[size_], std::default_delete<float[]>()) {}
     size_t size = 0;
     Shape shape = {0};
     std::shared_ptr<float> v;  // C++17: Replace with `shared_ptr<float[]>`.
@@ -258,7 +260,10 @@ NdArray::NdArray(const Shape& shape) {
     // Compute total size
     size_t size = 1;
     for (auto&& s : shape) {
-        size *= s;
+        if (s < 0) {
+            throw std::runtime_error("Invalid shape format (neg)");
+        }
+        size *= static_cast<size_t>(s);
     }
     // Create substance
     m_sub = std::make_shared<Substance>(size, shape);
@@ -280,6 +285,20 @@ NdArray NdArray::Zeros(const Shape& shape) {
 
 NdArray NdArray::Ones(const Shape& shape) {
     return NdArray(shape, 1.f);
+}
+
+NdArray NdArray::Arange(float stop) {
+    return Arange(0.f, stop, 1.f);
+}
+
+NdArray NdArray::Arange(float start, float stop, float step) {
+    const size_t n = static_cast<size_t>((stop - start) / step);
+    NdArray ret({static_cast<int>(n)});
+    float* data = ret.data();
+    for (size_t i = 0; i < n; i++) {
+        data[i] = start + step * static_cast<float>(i);
+    }
+    return ret;
 }
 
 // ---------------------------------- Methods ----------------------------------
@@ -311,7 +330,7 @@ NdArray NdArray::reshape(const Shape& shape) const {
                 unknown_idx = i;
             }
         } else {
-            size *= shape[i];
+            size *= static_cast<size_t>(shape[i]);
         }
     }
     Shape new_shape = shape;
@@ -325,7 +344,7 @@ NdArray NdArray::reshape(const Shape& shape) const {
         if (m_sub->size % size != 0) {
             throw std::runtime_error("Invalid reshape (-1)");
         }
-        new_shape[unknown_idx] = m_sub->size / size;
+        new_shape[unknown_idx] = static_cast<int>(m_sub->size / size);
     }
 
     // Create reshaped array
@@ -337,7 +356,7 @@ NdArray NdArray::reshape(const Shape& shape) const {
 }
 
 // --------------------------------- Operators ---------------------------------
-std::ostream& operator<<(std::ostream& os, NdArray& x) {
+std::ostream& operator<<(std::ostream& os, const NdArray& x) {
     const size_t size = x.size();
     const Shape& shape = x.shape();
     const float* data = x.data();
@@ -378,7 +397,7 @@ Variable::~Variable() = default;
 class Variable::Substance {
 public:
     Substance() {}
-    Substance(float v) : v(v) {}
+    Substance(float v_) : v(v_) {}
     float v;
     float grad = 0.f;
     Function creator;
@@ -483,12 +502,15 @@ Function::~Function() = default;
 // --------------------------------- Substance ---------------------------------
 class Function::Substance {
 public:
+    virtual ~Substance() {}
     virtual std::vector<float> forward(const std::vector<float>& x) {
+        (void)x;
         throw std::runtime_error("Invalid use of tinydiff::Function");
     }
     virtual std::vector<float> backward(const std::vector<float>& x,
                                         const std::vector<float>& y,
                                         const std::vector<float>& gy) {
+        (void)x, (void)y, (void)gy;
         throw std::runtime_error("Invalid use of tinydiff::Function");
     }
 
@@ -558,6 +580,8 @@ size_t Function::getRank() const {
 namespace F {
 
 class AddSub : public Function::Substance {
+public:
+    virtual ~AddSub() {}
     virtual std::vector<float> forward(const std::vector<float>& x) {
         CheckSize(x, 2);
         return {x[0] + x[1]};
@@ -573,6 +597,8 @@ class AddSub : public Function::Substance {
 };
 
 class MulSub : public Function::Substance {
+public:
+    virtual ~MulSub() {}
     virtual std::vector<float> forward(const std::vector<float>& x) {
         CheckSize(x, 2);
         return {x[0] * x[1]};
@@ -588,6 +614,8 @@ class MulSub : public Function::Substance {
 };
 
 class ExpSub : public Function::Substance {
+public:
+    virtual ~ExpSub() {}
     virtual std::vector<float> forward(const std::vector<float>& x) {
         CheckSize(x, 1);
         return {std::exp(x[0])};
