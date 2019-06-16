@@ -46,6 +46,8 @@ public:
     const float* data() const;
 
     NdArray reshape(const Shape& shape) const;
+    template <typename... S>
+    NdArray reshape(S... shape) const;
 
     float& operator[](int i);
     const float& operator[](int i) const;
@@ -368,6 +370,12 @@ NdArray NdArray::reshape(const Shape& shape) const {
     return ret;
 }
 
+template <typename... S>
+NdArray NdArray::reshape(S... shape) const {
+    // Pass to `reshape(Shape)`
+    return reshape({shape...});
+}
+
 // ------------------------------- Index Methods -------------------------------
 float& NdArray::operator[](int i) {
     // Use the same implementation of constant method.
@@ -420,6 +428,21 @@ const float& NdArray::operator()(I... index) const {
 
 // ---------------------- Template Method Specializations ----------------------
 // Assuming up to 10 dimensions.
+// For `NdArray reshape(S... shape)`
+template NdArray NdArray::reshape(int) const;
+template NdArray NdArray::reshape(int, int) const;
+template NdArray NdArray::reshape(int, int, int) const;
+template NdArray NdArray::reshape(int, int, int, int) const;
+template NdArray NdArray::reshape(int, int, int, int, int) const;
+template NdArray NdArray::reshape(int, int, int, int, int, int) const;
+template NdArray NdArray::reshape(int, int, int, int, int, int, int) const;
+template NdArray NdArray::reshape(int, int, int, int, int, int, int, int) const;
+template NdArray NdArray::reshape(int, int, int, int, int, int, int, int,
+                                  int) const;
+template NdArray NdArray::reshape(int, int, int, int, int, int, int, int, int,
+                                  int) const;
+template NdArray NdArray::reshape(int, int, int, int, int, int, int, int, int,
+                                  int, int) const;
 // For `float& operator()(I... index)`
 template float& NdArray::operator()(int);
 template float& NdArray::operator()(int, int);

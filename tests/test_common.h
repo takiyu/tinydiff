@@ -60,6 +60,26 @@ TEST_CASE("NdArray") {
                        "  [9, 10, 11]]]");
     }
 
+    SECTION("Reshape by template") {
+        auto m1 = NdArray::Arange(12.f);
+        auto m2 = m1.reshape(3, 4);
+        auto m3 = m2.reshape(2, -1);
+        auto m4 = m3.reshape(2, 2, -1);
+        RequireNdArray(m1, "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]");
+        RequireNdArray(m2,
+                       "[[0, 1, 2, 3],\n"
+                       " [4, 5, 6, 7],\n"
+                       " [8, 9, 10, 11]]");
+        RequireNdArray(m3,
+                       "[[0, 1, 2, 3, 4, 5],\n"
+                       " [6, 7, 8, 9, 10, 11]]");
+        RequireNdArray(m4,
+                       "[[[0, 1, 2],\n"
+                       "  [3, 4, 5]],\n"
+                       " [[6, 7, 8],\n"
+                       "  [9, 10, 11]]]");
+    }
+
     SECTION("Reshape with value change") {
         auto m1 = NdArray::Arange(12.f);
         auto m2 = m1.reshape({3, 4});
