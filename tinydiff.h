@@ -408,19 +408,19 @@ const float& NdArray::operator[](const Index& index) const {
 
 template <typename... I>
 float& NdArray::operator()(I... index) {
-    // Pass to operator[]
-    return (*this)[{index...}];
-}
-
-template <typename... I>
-const float& NdArray::operator()(I... index) const {
     // Use the same implementation of constant method.
     return const_cast<float&>(static_cast<const NdArray&>(*this)(index...));
 }
 
+template <typename... I>
+const float& NdArray::operator()(I... index) const {
+    // Pass to operator[]
+    return (*this)[{index...}];
+}
+
 // ---------------------- Template Method Specializations ----------------------
 // Assuming up to 10 dimensions.
-// For `operator()(I... index)`
+// For `float& operator()(I... index)`
 template float& NdArray::operator()(int);
 template float& NdArray::operator()(int, int);
 template float& NdArray::operator()(int, int, int);
@@ -433,20 +433,21 @@ template float& NdArray::operator()(int, int, int, int, int, int, int, int,
                                     int);
 template float& NdArray::operator()(int, int, int, int, int, int, int, int, int,
                                     int);
-// For `operator()(I... index) const`
-template float& NdArray::operator()(int) const;
-template float& NdArray::operator()(int, int) const;
-template float& NdArray::operator()(int, int, int) const;
-template float& NdArray::operator()(int, int, int, int) const;
-template float& NdArray::operator()(int, int, int, int, int) const;
-template float& NdArray::operator()(int, int, int, int, int, int) const;
-template float& NdArray::operator()(int, int, int, int, int, int, int) const;
-template float& NdArray::operator()(int, int, int, int, int, int, int,
-                                    int) const;
-template float& NdArray::operator()(int, int, int, int, int, int, int, int,
-                                    int) const;
-template float& NdArray::operator()(int, int, int, int, int, int, int, int, int,
-                                    int) const;
+// For `const float& operator()(I... index) const`
+template const float& NdArray::operator()(int) const;
+template const float& NdArray::operator()(int, int) const;
+template const float& NdArray::operator()(int, int, int) const;
+template const float& NdArray::operator()(int, int, int, int) const;
+template const float& NdArray::operator()(int, int, int, int, int) const;
+template const float& NdArray::operator()(int, int, int, int, int, int) const;
+template const float& NdArray::operator()(int, int, int, int, int, int,
+                                          int) const;
+template const float& NdArray::operator()(int, int, int, int, int, int, int,
+                                          int) const;
+template const float& NdArray::operator()(int, int, int, int, int, int, int,
+                                          int, int) const;
+template const float& NdArray::operator()(int, int, int, int, int, int, int,
+                                          int, int, int) const;
 
 // --------------------------------- Operators ---------------------------------
 std::ostream& operator<<(std::ostream& os, const NdArray& x) {

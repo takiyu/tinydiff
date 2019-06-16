@@ -130,6 +130,18 @@ TEST_CASE("NdArray") {
                        " [[6, 7, 8],\n"
                        "  [9, 10, -1]]]");
     }
+
+    SECTION("Index access by [] (const)") {
+        const auto m1 = NdArray::Arange(12.f).reshape({1, 4, 3});
+        REQUIRE(m1[{0, 2, 1}] == 7);
+        REQUIRE(m1[{0, -1, 1}] == 10);
+    }
+
+    SECTION("Index access by () (const)") {
+        const auto m1 = NdArray::Arange(12.f).reshape({1, 4, 3});
+        REQUIRE(m1(0, 2, 1) == 7);
+        REQUIRE(m1(0, -1, 1) == 10);
+    }
 }
 
 TEST_CASE("AutoGrad") {
