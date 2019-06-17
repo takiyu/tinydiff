@@ -28,6 +28,23 @@ TEST_CASE("NdArray") {
                        " [1, 1, 1, 1, 1]]");
     }
 
+    SECTION("Empty/Ones/Zeros by template") {
+        const NdArray m1({2, 5});
+        const auto m2 = NdArray::Empty(2, 5);
+        const auto m3 = NdArray::Zeros(2, 5);
+        const auto m4 = NdArray::Ones(2, 5);
+        REQUIRE(m1.shape() == Shape{2, 5});
+        REQUIRE(m2.shape() == Shape{2, 5});
+        REQUIRE(m3.shape() == Shape{2, 5});
+        REQUIRE(m4.shape() == Shape{2, 5});
+        RequireNdArray(m3,
+                       "[[0, 0, 0, 0, 0],\n"
+                       " [0, 0, 0, 0, 0]]");
+        RequireNdArray(m4,
+                       "[[1, 1, 1, 1, 1],\n"
+                       " [1, 1, 1, 1, 1]]");
+    }
+
     SECTION("Arange") {
         const auto m1 = NdArray::Arange(10.f);
         const auto m2 = NdArray::Arange(0.f, 10.f, 1.f);

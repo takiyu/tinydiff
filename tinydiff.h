@@ -37,6 +37,14 @@ public:
     static NdArray Empty(const Shape& shape);
     static NdArray Zeros(const Shape& shape);
     static NdArray Ones(const Shape& shape);
+
+    template <typename... S>
+    static NdArray Empty(S... shape);
+    template <typename... S>
+    static NdArray Zeros(S... shape);
+    template <typename... S>
+    static NdArray Ones(S... shape);
+
     static NdArray Arange(float stop);
     static NdArray Arange(float start, float stop, float step = 1.f);
 
@@ -301,6 +309,21 @@ NdArray NdArray::Ones(const Shape& shape) {
     return NdArray(shape, 1.f);
 }
 
+template <typename... S>
+NdArray NdArray::Empty(S... shape) {
+    return Empty({shape...});  // Unpack
+}
+
+template <typename... S>
+NdArray NdArray::Zeros(S... shape) {
+    return Zeros({shape...});  // Unpack
+}
+
+template <typename... S>
+NdArray NdArray::Ones(S... shape) {
+    return Ones({shape...});  // Unpack
+}
+
 NdArray NdArray::Arange(float stop) {
     return Arange(0.f, stop, 1.f);
 }
@@ -365,7 +388,7 @@ NdArray NdArray::reshape(const Shape& shape) const {
     // Create reshaped array
     NdArray ret;
     ret.m_sub->size = m_sub->size;  // Same size
-    ret.m_sub->shape = new_shape;   // New shape
+    ret.m_sub->shape = std::move(new_shape);  // New shape
     ret.m_sub->v = m_sub->v;        // Shared elements
     return ret;
 }
@@ -428,6 +451,39 @@ const float& NdArray::operator()(I... index) const {
 
 // ---------------------- Template Method Specializations ----------------------
 // Assuming up to 10 dimensions.
+// For `Empty(S... shape)`
+template NdArray NdArray::Empty(int);
+template NdArray NdArray::Empty(int, int);
+template NdArray NdArray::Empty(int, int, int);
+template NdArray NdArray::Empty(int, int, int, int);
+template NdArray NdArray::Empty(int, int, int, int, int);
+template NdArray NdArray::Empty(int, int, int, int, int, int);
+template NdArray NdArray::Empty(int, int, int, int, int, int, int);
+template NdArray NdArray::Empty(int, int, int, int, int, int, int, int);
+template NdArray NdArray::Empty(int, int, int, int, int, int, int, int, int);
+template NdArray NdArray::Empty(int, int, int, int, int, int, int, int, int, int);
+// For `Zeros(S... shape)`
+template NdArray NdArray::Zeros(int);
+template NdArray NdArray::Zeros(int, int);
+template NdArray NdArray::Zeros(int, int, int);
+template NdArray NdArray::Zeros(int, int, int, int);
+template NdArray NdArray::Zeros(int, int, int, int, int);
+template NdArray NdArray::Zeros(int, int, int, int, int, int);
+template NdArray NdArray::Zeros(int, int, int, int, int, int, int);
+template NdArray NdArray::Zeros(int, int, int, int, int, int, int, int);
+template NdArray NdArray::Zeros(int, int, int, int, int, int, int, int, int);
+template NdArray NdArray::Zeros(int, int, int, int, int, int, int, int, int, int);
+// For `Ones(S... shape)`
+template NdArray NdArray::Ones(int);
+template NdArray NdArray::Ones(int, int);
+template NdArray NdArray::Ones(int, int, int);
+template NdArray NdArray::Ones(int, int, int, int);
+template NdArray NdArray::Ones(int, int, int, int, int);
+template NdArray NdArray::Ones(int, int, int, int, int, int);
+template NdArray NdArray::Ones(int, int, int, int, int, int, int);
+template NdArray NdArray::Ones(int, int, int, int, int, int, int, int);
+template NdArray NdArray::Ones(int, int, int, int, int, int, int, int, int);
+template NdArray NdArray::Ones(int, int, int, int, int, int, int, int, int, int);
 // For `NdArray reshape(S... shape)`
 template NdArray NdArray::reshape(int) const;
 template NdArray NdArray::reshape(int, int) const;
