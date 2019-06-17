@@ -11,8 +11,40 @@ static void RequireNdArray(const NdArray& m, const std::string& str) {
 }
 
 TEST_CASE("NdArray") {
+    SECTION("Float initializer") {
+        const NdArray m1 = {1.f, 2.f, 3.f};
+        const NdArray m2 = {{1.f, 2.f, 3.f}, {4.f, 5.f, 6.f}};
+        const NdArray m3 = {{{1.f, 2.f}}, {{3.f, 4.f}}, {{2.f, 3.f}}};
+        REQUIRE(m1.shape() == Shape{3});
+        REQUIRE(m2.shape() == Shape{2, 3});
+        REQUIRE(m3.shape() == Shape{3, 1, 2});
+        RequireNdArray(m1, "[1, 2, 3]");
+        RequireNdArray(m2,
+                       "[[1, 2, 3],\n"
+                       " [4, 5, 6]]");
+        RequireNdArray(m3,
+                       "[[[1, 2]],\n"
+                       " [[3, 4]],\n"
+                       " [[2, 3]]]");
+    }
+
+    SECTION("Float initializer invalid") {
+        REQUIRE_NOTHROW(NdArray{{{1.f, 2.f}}, {{3.f, 4.f}}, {{1.f, 2.f}}});
+        REQUIRE_THROWS(NdArray{{{1, 2}}, {}});
+        REQUIRE_THROWS(NdArray{{{1.f, 2.f}}, {{3.f, 4.f}}, {{1.f, 2.f, 3.f}}});
+    }
+
+    SECTION("Confusable initializers") {
+        const NdArray m1 = {1.f, 2.f, 3.f};  // Float initializer
+        const NdArray m2 = {1, 2, 3};        // Shape (int) initalizer
+        const NdArray m3 = {{1, 2, 3}};      // Float initializer due to nest
+        REQUIRE(m1.shape() == Shape{3});
+        REQUIRE(m2.shape() == Shape{1, 2, 3});
+        REQUIRE(m3.shape() == Shape{1, 3});
+    }
+
     SECTION("Empty/Ones/Zeros") {
-        const NdArray m1({2, 5});
+        const NdArray m1({2, 5});  // Same as Empty
         const auto m2 = NdArray::Empty({2, 5});
         const auto m3 = NdArray::Zeros({2, 5});
         const auto m4 = NdArray::Ones({2, 5});
@@ -29,7 +61,7 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Empty/Ones/Zeros by template") {
-        const NdArray m1({2, 5});
+        const NdArray m1({2, 5});  // No template support
         const auto m2 = NdArray::Empty(2, 5);
         const auto m3 = NdArray::Zeros(2, 5);
         const auto m4 = NdArray::Ones(2, 5);

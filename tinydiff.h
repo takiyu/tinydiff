@@ -5,6 +5,7 @@
 #include <cmath>
 #include <exception>
 #include <iostream>
+#include <list>
 #include <map>
 #include <memory>
 #include <sstream>
@@ -13,11 +14,28 @@
 namespace tinydiff {
 
 class NdArray;
+using InitShape = std::initializer_list<int>;
 using Shape = std::vector<int>;
 using Index = std::vector<int>;
 class Variable;
 using Variables = std::vector<Variable>;
 class Function;
+
+// =============================================================================
+// ======================= Nested Float Initializer List =======================
+// =============================================================================
+template <std::size_t D>
+struct FloatListHelper {
+    using type = std::initializer_list<typename FloatListHelper<D - 1>::type>;
+};
+
+template <>
+struct FloatListHelper<0> {
+    using type = std::initializer_list<float>;
+};
+
+template <std::size_t D>
+using FloatList = typename FloatListHelper<D>::type;
 
 // =============================================================================
 // ================================== NdArray ==================================
@@ -31,7 +49,19 @@ public:
     NdArray& operator=(NdArray&&);
     ~NdArray();
 
-    NdArray(const Shape& shape);
+    NdArray(FloatList<0> init_list);
+    NdArray(FloatList<1> init_list);
+    NdArray(FloatList<2> init_list);
+    NdArray(FloatList<3> init_list);
+    NdArray(FloatList<4> init_list);
+    NdArray(FloatList<5> init_list);
+    NdArray(FloatList<6> init_list);
+    NdArray(FloatList<7> init_list);
+    NdArray(FloatList<8> init_list);
+    NdArray(FloatList<9> init_list);
+
+    NdArray(const InitShape& shape);
+    NdArray(const Shape& shape);  // Notice: Do not use with implicit cast.
     NdArray(const Shape& shape, float fill_v);
 
     static NdArray Empty(const Shape& shape);
@@ -164,47 +194,54 @@ Variable exp(Variable x);
 // *****************************************************************************
 #ifdef TINYDIFF_IMPLEMENTATION
 
-// ----------------------------- Utilities -------------------------------------
-template <typename T>
-void CheckSize(const std::vector<T>& x, size_t n) {
-    if (x.size() != n) {
-        throw std::runtime_error("Invalid vector size");
+// --------------------------- Utilities for NdArray ---------------------------
+template <typename FList>
+std::list<int> CheckFListShapeImpl(const FList& init_list) {
+    if (init_list.size() == 0) {
+        return {};
     }
+    // Check all children have same shape
+    auto itr = init_list.begin();
+    auto shape = CheckFListShapeImpl(*itr);
+    for (size_t i = 0; i < init_list.size(); i++, itr++) {
+        if (shape != CheckFListShapeImpl(*itr)) {
+            throw std::runtime_error("Initializing shape is invalid");
+        }
+    }
+    // Return total shape of children
+    shape.push_front(static_cast<int>(init_list.size()));
+    return shape;
 }
 
-template <typename K, typename V>
-V PopLast(std::map<K, V>& m) {
-    auto&& last_itr = std::prev(m.end());
-    V last = last_itr->second;
-    m.erase(last_itr);
-    return last;
+template <>
+std::list<int> CheckFListShapeImpl(const FloatList<0>& init_list) {
+    return {static_cast<int>(init_list.size())};
 }
 
-static std::vector<float> CvtFromVariables(const Variables& src) {
-    std::vector<float> ret;
-    ret.reserve(src.size());
-    for (auto&& s_elem : src) {
-        ret.emplace_back(s_elem.data());
-    }
-    return ret;
+template <typename FList>
+Shape CheckFListShape(const FList& init_list) {
+    // Check and get the shape of nested initializer.
+    const std::list<int>& shape = CheckFListShapeImpl(init_list);
+    // Cast to vector
+    return Shape(shape.begin(), shape.end());
 }
 
-static Variables CvtToVariables(const std::vector<float>& src) {
-    Variables ret;
-    ret.reserve(src.size());
-    for (auto&& s_elem : src) {
-        ret.emplace_back(Variable(s_elem));
+template <typename FList>
+float* CopyFListElems(const FList& init_list, float* data) {
+    // Copy sequentially
+    for (auto itr = init_list.begin(); itr != init_list.end(); itr++) {
+        data = CopyFListElems(*itr, data);
     }
-    return ret;
+    return data;
 }
 
-static std::vector<float> GetGrads(const Variables& src) {
-    std::vector<float> ret;
-    ret.reserve(src.size());
-    for (auto&& s_elem : src) {
-        ret.emplace_back(s_elem.grad());
+template <>
+float* CopyFListElems(const FloatList<0>& init_list, float* data) {
+    // Copy sequentially
+    for (auto&& v : init_list) {
+        *(data++) = v;
     }
-    return ret;
+    return data;
 }
 
 static void OutputArrayLine(std::ostream& os, const float*& data, size_t size) {
@@ -247,6 +284,49 @@ static void OutputArrayMultiDim(std::ostream& os, const float*& data,
     }
 }
 
+// -------------------------- Utilities for Variable ---------------------------
+template <typename T>
+void CheckSize(const std::vector<T>& x, size_t n) {
+    if (x.size() != n) {
+        throw std::runtime_error("Invalid vector size");
+    }
+}
+
+template <typename K, typename V>
+V PopLast(std::map<K, V>& m) {
+    auto&& last_itr = std::prev(m.end());
+    V last = last_itr->second;
+    m.erase(last_itr);
+    return last;
+}
+
+static std::vector<float> CvtFromVariables(const Variables& src) {
+    std::vector<float> ret;
+    ret.reserve(src.size());
+    for (auto&& s_elem : src) {
+        ret.emplace_back(s_elem.data());
+    }
+    return ret;
+}
+
+static Variables CvtToVariables(const std::vector<float>& src) {
+    Variables ret;
+    ret.reserve(src.size());
+    for (auto&& s_elem : src) {
+        ret.emplace_back(Variable(s_elem));
+    }
+    return ret;
+}
+
+static std::vector<float> GetGrads(const Variables& src) {
+    std::vector<float> ret;
+    ret.reserve(src.size());
+    for (auto&& s_elem : src) {
+        ret.emplace_back(s_elem.grad());
+    }
+    return ret;
+}
+
 // =============================================================================
 // ============================ NdArray Definition =============================
 // =============================================================================
@@ -277,7 +357,49 @@ public:
     std::shared_ptr<float> v;  // C++17: Replace with `shared_ptr<float[]>`.
 };
 
-// -------------------------------- Constructors -------------------------------
+// -------------------- Constructors with Float Initializers -------------------
+NdArray::NdArray(FloatList<0> init_list) : NdArray(CheckFListShape(init_list)) {
+    // Fill after empty initialization
+    CopyFListElems(init_list, m_sub->v.get());
+}
+
+NdArray::NdArray(FloatList<1> init_list) : NdArray(CheckFListShape(init_list)) {
+    CopyFListElems(init_list, m_sub->v.get());
+}
+
+NdArray::NdArray(FloatList<2> init_list) : NdArray(CheckFListShape(init_list)) {
+    CopyFListElems(init_list, m_sub->v.get());
+}
+
+NdArray::NdArray(FloatList<3> init_list) : NdArray(CheckFListShape(init_list)) {
+    CopyFListElems(init_list, m_sub->v.get());
+}
+
+NdArray::NdArray(FloatList<4> init_list) : NdArray(CheckFListShape(init_list)) {
+    CopyFListElems(init_list, m_sub->v.get());
+}
+
+NdArray::NdArray(FloatList<5> init_list) : NdArray(CheckFListShape(init_list)) {
+    CopyFListElems(init_list, m_sub->v.get());
+}
+
+NdArray::NdArray(FloatList<6> init_list) : NdArray(CheckFListShape(init_list)) {
+    CopyFListElems(init_list, m_sub->v.get());
+}
+
+NdArray::NdArray(FloatList<7> init_list) : NdArray(CheckFListShape(init_list)) {
+    CopyFListElems(init_list, m_sub->v.get());
+}
+
+NdArray::NdArray(FloatList<9> init_list) : NdArray(CheckFListShape(init_list)) {
+    CopyFListElems(init_list, m_sub->v.get());
+}
+
+// -------------------------- Constructors with Shape --------------------------
+NdArray::NdArray(const InitShape& shape) : NdArray(Shape(shape)) {
+    // Just pass initializer list to `Shape` (== std::vector<int>).
+}
+
 NdArray::NdArray(const Shape& shape) {
     // Compute total size
     size_t size = 1;
@@ -292,7 +414,7 @@ NdArray::NdArray(const Shape& shape) {
 }
 
 NdArray::NdArray(const Shape& shape, float fill_v) : NdArray(shape) {
-    // Fill after initialize
+    // Fill after empty initialization
     std::fill_n(m_sub->v.get(), m_sub->size, fill_v);
 }
 
