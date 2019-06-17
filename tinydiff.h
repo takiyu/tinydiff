@@ -387,9 +387,9 @@ NdArray NdArray::reshape(const Shape& shape) const {
 
     // Create reshaped array
     NdArray ret;
-    ret.m_sub->size = m_sub->size;  // Same size
+    ret.m_sub->size = m_sub->size;            // Same size
     ret.m_sub->shape = std::move(new_shape);  // New shape
-    ret.m_sub->v = m_sub->v;        // Shared elements
+    ret.m_sub->v = m_sub->v;                  // Shared elements
     return ret;
 }
 
@@ -461,7 +461,8 @@ template NdArray NdArray::Empty(int, int, int, int, int, int);
 template NdArray NdArray::Empty(int, int, int, int, int, int, int);
 template NdArray NdArray::Empty(int, int, int, int, int, int, int, int);
 template NdArray NdArray::Empty(int, int, int, int, int, int, int, int, int);
-template NdArray NdArray::Empty(int, int, int, int, int, int, int, int, int, int);
+template NdArray NdArray::Empty(int, int, int, int, int, int, int, int, int,
+                                int);
 // For `Zeros(S... shape)`
 template NdArray NdArray::Zeros(int);
 template NdArray NdArray::Zeros(int, int);
@@ -472,7 +473,8 @@ template NdArray NdArray::Zeros(int, int, int, int, int, int);
 template NdArray NdArray::Zeros(int, int, int, int, int, int, int);
 template NdArray NdArray::Zeros(int, int, int, int, int, int, int, int);
 template NdArray NdArray::Zeros(int, int, int, int, int, int, int, int, int);
-template NdArray NdArray::Zeros(int, int, int, int, int, int, int, int, int, int);
+template NdArray NdArray::Zeros(int, int, int, int, int, int, int, int, int,
+                                int);
 // For `Ones(S... shape)`
 template NdArray NdArray::Ones(int);
 template NdArray NdArray::Ones(int, int);
@@ -483,7 +485,8 @@ template NdArray NdArray::Ones(int, int, int, int, int, int);
 template NdArray NdArray::Ones(int, int, int, int, int, int, int);
 template NdArray NdArray::Ones(int, int, int, int, int, int, int, int);
 template NdArray NdArray::Ones(int, int, int, int, int, int, int, int, int);
-template NdArray NdArray::Ones(int, int, int, int, int, int, int, int, int, int);
+template NdArray NdArray::Ones(int, int, int, int, int, int, int, int, int,
+                               int);
 // For `NdArray reshape(S... shape)`
 template NdArray NdArray::reshape(int) const;
 template NdArray NdArray::reshape(int, int) const;
