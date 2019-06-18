@@ -61,7 +61,7 @@ public:
     NdArray(FloatList<9> init_list);
 
     NdArray(const InitShape& shape);
-    NdArray(const Shape& shape);  // Notice: Do not use with implicit cast.
+    NdArray(const Shape& shape);
     NdArray(const Shape& shape, float fill_v);
 
     static NdArray Empty(const Shape& shape);
@@ -78,10 +78,16 @@ public:
     static NdArray Arange(float stop);
     static NdArray Arange(float start, float stop, float step = 1.f);
 
+    bool empty() const;
     size_t size() const;
     const Shape& shape() const;
     float* data();
     const float* data() const;
+
+    float* begin();
+    float* end();
+    const float* begin() const;
+    const float* end() const;
 
     NdArray reshape(const Shape& shape) const;
     template <typename... S>
@@ -89,6 +95,7 @@ public:
 
     float& operator[](int i);
     const float& operator[](int i) const;
+
     float& operator[](const Index& index);
     const float& operator[](const Index& index) const;
 
@@ -451,7 +458,7 @@ NdArray NdArray::Arange(float stop) {
 }
 
 NdArray NdArray::Arange(float start, float stop, float step) {
-    const size_t n = static_cast<size_t>((stop - start) / step);
+    const size_t n = static_cast<size_t>(std::ceil((stop - start) / step));
     NdArray ret({static_cast<int>(n)});
     float* data = ret.data();
     for (size_t i = 0; i < n; i++) {
@@ -461,6 +468,10 @@ NdArray NdArray::Arange(float start, float stop, float step) {
 }
 
 // ------------------------------- Basic Methods -------------------------------
+bool NdArray::empty() const {
+    return m_sub->size == 0;
+}
+
 size_t NdArray::size() const {
     return m_sub->size;
 }
@@ -475,6 +486,23 @@ float* NdArray::data() {
 
 const float* NdArray::data() const {
     return m_sub->v.get();
+}
+
+// ----------------------------- Begin/End Methods -----------------------------
+float* NdArray::begin() {
+    return m_sub->v.get();
+}
+
+float* NdArray::end() {
+    return m_sub->v.get() + m_sub->size;
+}
+
+const float* NdArray::begin() const {
+    return m_sub->v.get();
+}
+
+const float* NdArray::end() const {
+    return m_sub->v.get() + m_sub->size;
 }
 
 // ------------------------------- Reshape Method ------------------------------

@@ -11,6 +11,13 @@ static void RequireNdArray(const NdArray& m, const std::string& str) {
 }
 
 TEST_CASE("NdArray") {
+    SECTION("Empty") {
+        const NdArray m1;
+        REQUIRE(m1.empty());
+        REQUIRE(m1.size() == 0);
+        REQUIRE(m1.shape() == Shape{0});
+    }
+
     SECTION("Float initializer") {
         const NdArray m1 = {1.f, 2.f, 3.f};
         const NdArray m2 = {{1.f, 2.f, 3.f}, {4.f, 5.f, 6.f}};
@@ -87,6 +94,19 @@ TEST_CASE("NdArray") {
         RequireNdArray(m1, "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]");
         RequireNdArray(m2, "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]");
         RequireNdArray(m3, "[5, 5.1, 5.2, 5.3, 5.4]");
+    }
+
+    SECTION("Begin/End") {
+        auto m1 = NdArray::Arange(1.f, 10.01f);
+        // C++11 for-loop
+        float sum1 = 0.f;
+        for (auto&& v: m1) {
+            sum1 += v;
+        }
+        REQUIRE(sum1 == Approx(55.f));
+        // std library
+        float sum2 = std::accumulate(m1.begin(), m1.end(), 0.f);
+        REQUIRE(sum2 == Approx(55.f));
     }
 
     SECTION("Reshape") {
