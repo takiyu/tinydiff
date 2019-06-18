@@ -232,6 +232,64 @@ TEST_CASE("NdArray") {
         REQUIRE_THROWS(m1.reshape({-1, -1}));
     }
 
+    SECTION("Slice 2-dim") {
+        auto m1 = NdArray::Arange(16.f).reshape(4, 4);
+        auto m2 = m1.slice({{1, 3}, {1, 3}});
+        auto m3 = m1.slice({1, 3}, {0, 4});
+        auto m4 = m1.slice({0, 4}, {1, 3});
+        auto m5 = m1.slice({1, -1}, {0, 100000});
+        REQUIRE(m1.shape() == Shape{4, 4});
+        REQUIRE(m2.shape() == Shape{2, 2});
+        REQUIRE(m3.shape() == Shape{2, 4});
+        REQUIRE(m4.shape() == Shape{4, 2});
+        REQUIRE(m5.shape() == Shape{2, 4});
+        RequireNdArray(m1,
+                       "[[0, 1, 2, 3],\n"
+                       " [4, 5, 6, 7],\n"
+                       " [8, 9, 10, 11],\n"
+                       " [12, 13, 14, 15]]");
+        RequireNdArray(m2,
+                       "[[5, 6],\n"
+                       " [9, 10]]");
+        RequireNdArray(m3,
+                       "[[4, 5, 6, 7],\n"
+                       " [8, 9, 10, 11]]");
+        RequireNdArray(m4,
+                       "[[1, 2],\n"
+                       " [5, 6],\n"
+                       " [9, 10],\n"
+                       " [13, 14]]");
+        RequireNdArray(m5,
+                       "[[4, 5, 6, 7],\n"
+                       " [8, 9, 10, 11]]");
+    }
+
+    SECTION("Slice high-dim") {
+        auto m1 = NdArray::Arange(256).reshape(4, 4, 4, 4);
+        auto m2 = m1.slice({{1, 3}, {1, 3}, {1, 3}, {1, 3}});
+        auto m3 = m1.slice({1, 3}, {1, 3}, {1, 3}, {1, 3});
+        REQUIRE(m1.shape() == Shape{4, 4, 4, 4});
+        REQUIRE(m2.shape() == Shape{2, 2, 2, 2});
+        REQUIRE(m3.shape() == Shape{2, 2, 2, 2});
+        RequireNdArray(m2,
+                       "[[[[85, 86],\n"
+                       "   [89, 90]],\n"
+                       "  [[101, 102],\n"
+                       "   [105, 106]]],\n"
+                       " [[[149, 150],\n"
+                       "   [153, 154]],\n"
+                       "  [[165, 166],\n"
+                       "   [169, 170]]]]");
+        RequireNdArray(m3,
+                       "[[[[85, 86],\n"
+                       "   [89, 90]],\n"
+                       "  [[101, 102],\n"
+                       "   [105, 106]]],\n"
+                       " [[[149, 150],\n"
+                       "   [153, 154]],\n"
+                       "  [[165, 166],\n"
+                       "   [169, 170]]]]");
+    }
 }
 
 TEST_CASE("AutoGrad") {

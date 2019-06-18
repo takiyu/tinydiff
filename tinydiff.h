@@ -105,6 +105,10 @@ public:
     template <typename... S>
     NdArray reshape(S... shape) const;
 
+    NdArray slice(const SliceIndex& slice_index) const;
+    template <typename... I>
+    NdArray slice(std::initializer_list<I>... slice_index) const;  // {i, j}...
+
     class Substance;
 
 private:
@@ -203,6 +207,11 @@ Variable exp(Variable x);
 #ifdef TINYDIFF_IMPLEMENTATION
 
 // --------------------------- Utilities for NdArray ---------------------------
+template <typename T>
+T clamp(const T& v, const T& lower, const T& upper) {
+    return std::min(std::max(v, lower), upper);
+}
+
 template <typename FList>
 std::list<int> CheckFListShapeImpl(const FList& init_list) {
     if (init_list.size() == 0) {
@@ -235,21 +244,79 @@ Shape CheckFListShape(const FList& init_list) {
 }
 
 template <typename FList>
-float* CopyFListElems(const FList& init_list, float* data) {
+void CopyFListElemsImpl(const FList& init_list, float*& data) {
     // Copy sequentially
     for (auto itr = init_list.begin(); itr != init_list.end(); itr++) {
-        data = CopyFListElems(*itr, data);
+        CopyFListElemsImpl(*itr, data);
     }
-    return data;
 }
 
 template <>
-float* CopyFListElems(const FloatList<0>& init_list, float* data) {
+void CopyFListElemsImpl(const FloatList<0>& init_list, float*& data) {
     // Copy sequentially
     for (auto&& v : init_list) {
         *(data++) = v;
     }
-    return data;
+}
+
+template <typename FList>
+void CopyFListElems(const FList& init_list, float* data) {
+    // Pass to impl (create pointer instance)
+    CopyFListElemsImpl(init_list, data);
+}
+
+static void CopySliceImpl(const float*& src_data, float*& dst_data,
+                          const Shape& src_shape, const SliceIndex& slice_index,
+                          const std::vector<int>& offsets, size_t depth) {
+    if (depth < src_shape.size()) {
+        const auto& si = slice_index[depth];
+
+        src_data += offsets[depth] * si.first;
+
+        for (int i = si.first; i < si.second; i++) {
+            // Recursive call
+            CopySliceImpl(src_data, dst_data, src_shape, slice_index, offsets,
+                          depth + 1);
+        }
+
+        src_data += offsets[depth] * (src_shape[depth] - si.second);
+
+    } else {
+        // Copy
+        *(dst_data++) = *(src_data++);
+    }
+}
+
+static NdArray CopySlice(const NdArray& src, const Shape& slice_shape,
+                         const SliceIndex& slice_index) {
+    const Shape& src_shape = src.shape();
+
+    // Pre-compute index offsets (the number of children for each dimension)
+    const size_t n_shape = src_shape.size();
+    std::vector<int> offsets(n_shape, 1);
+    int offset = 1;
+    for (size_t depth = n_shape - 1; 0 < depth; depth--) {
+        offsets[depth] = offset;
+        offset *= src_shape[depth];
+    }
+    offsets[0] = offset;
+
+    // Create slice instance
+    NdArray ret(slice_shape);
+
+    // Start to copy
+    const float* src_data = src.data();
+    float* dst_data = ret.data();
+    CopySliceImpl(src_data, dst_data, src_shape, slice_index, offsets, 0);
+
+    return ret;
+}
+
+static std::pair<int, int> CvtToSliceIndexItem(std::initializer_list<int> l) {
+    if (l.size() != 2) {
+        throw std::runtime_error("Invalid slice index format");
+    }
+    return {*l.begin(), *(l.begin() + 1)};
 }
 
 static void OutputArrayLine(std::ostream& os, const float*& data, size_t size) {
@@ -513,11 +580,10 @@ float& NdArray::operator[](int i) {
 }
 
 const float& NdArray::operator[](int i) const {
-    const size_t idx =
-            (0 <= i) ? static_cast<size_t>(i) :
-                       m_sub->size + static_cast<size_t>(i);  // Negative index
-    // Direct access
-    return *(m_sub->v.get() + idx);
+    // Make the index positive
+    const int p_idx = (0 <= i) ? i : static_cast<int>(m_sub->size) + i;
+    // Direct access with range check
+    return *(m_sub->v.get() + p_idx);
 }
 
 float& NdArray::operator[](const Index& index) {
@@ -535,13 +601,12 @@ const float& NdArray::operator[](const Index& index) const {
     for (size_t d = 0; d < index.size(); d++) {
         // Compute `i = i * shape + index` recurrently
         i *= shape[d];
-        if (0 <= index[d]) {
-            i += index[d];  // Positive index
-        } else {
-            i += shape[d] + index[d];  // Negative index
-        }
+        // Make the index positive
+        const int p_idx = (0 <= index[d]) ? index[d] : shape[d] + index[d];
+        i += p_idx;
     }
-    return (*this)[i];
+    // Direct access
+    return *(m_sub->v.get() + i);
 }
 
 template <typename... I>
@@ -600,6 +665,42 @@ NdArray NdArray::reshape(S... shape) const {
     return reshape({shape...});
 }
 
+// -------------------------------- Slice Method -------------------------------
+NdArray NdArray::slice(const SliceIndex& slice_index) const {
+    const Shape& shape = m_sub->shape;
+
+    // Compute slice shape and new positive index
+    Shape slice_shape;
+    SliceIndex new_index;
+    for (size_t i = 0; i < shape.size(); i++) {
+        const auto& si = slice_index[i];
+        if (slice_index.size() <= i) {
+            // All
+            slice_shape.push_back(shape[i]);
+            new_index.push_back({0, shape[i]});
+        } else {
+            // Make index positive
+            int s = (0 <= si.first) ? si.first : shape[i] + si.first;
+            int e = (0 <= si.second) ? si.second : shape[i] + si.second;
+            // Clamp
+            s = clamp(s, 0, shape[i] - 1);  // Start must be in range.
+            e = clamp(e, 0, shape[i]);      // End can be next of the last.
+            // Register
+            slice_shape.push_back(e - s);
+            new_index.push_back({s, e});
+        }
+    }
+
+    // Copy to slice array
+    return CopySlice((*this), slice_shape, new_index);
+}
+
+template <typename... I>
+NdArray NdArray::slice(std::initializer_list<I>... slice_index) const {
+    // Cast `initializer_list` to `pair`, and pass to 'slice(SliceIndex)'
+    return slice(SliceIndex{CvtToSliceIndexItem(slice_index)...});
+}
+
 // ---------------------- Template Method Specializations ----------------------
 // Assuming up to 10 dimensions.
 // For `Empty(S... shape)`
@@ -638,21 +739,6 @@ template NdArray NdArray::Ones(int, int, int, int, int, int, int, int);
 template NdArray NdArray::Ones(int, int, int, int, int, int, int, int, int);
 template NdArray NdArray::Ones(int, int, int, int, int, int, int, int, int,
                                int);
-// For `NdArray reshape(S... shape)`
-template NdArray NdArray::reshape(int) const;
-template NdArray NdArray::reshape(int, int) const;
-template NdArray NdArray::reshape(int, int, int) const;
-template NdArray NdArray::reshape(int, int, int, int) const;
-template NdArray NdArray::reshape(int, int, int, int, int) const;
-template NdArray NdArray::reshape(int, int, int, int, int, int) const;
-template NdArray NdArray::reshape(int, int, int, int, int, int, int) const;
-template NdArray NdArray::reshape(int, int, int, int, int, int, int, int) const;
-template NdArray NdArray::reshape(int, int, int, int, int, int, int, int,
-                                  int) const;
-template NdArray NdArray::reshape(int, int, int, int, int, int, int, int, int,
-                                  int) const;
-template NdArray NdArray::reshape(int, int, int, int, int, int, int, int, int,
-                                  int, int) const;
 // For `float& operator()(I... index)`
 template float& NdArray::operator()(int);
 template float& NdArray::operator()(int, int);
@@ -681,6 +767,38 @@ template const float& NdArray::operator()(int, int, int, int, int, int, int,
                                           int, int) const;
 template const float& NdArray::operator()(int, int, int, int, int, int, int,
                                           int, int, int) const;
+// For `NdArray reshape(S... shape) const`
+template NdArray NdArray::reshape(int) const;
+template NdArray NdArray::reshape(int, int) const;
+template NdArray NdArray::reshape(int, int, int) const;
+template NdArray NdArray::reshape(int, int, int, int) const;
+template NdArray NdArray::reshape(int, int, int, int, int) const;
+template NdArray NdArray::reshape(int, int, int, int, int, int) const;
+template NdArray NdArray::reshape(int, int, int, int, int, int, int) const;
+template NdArray NdArray::reshape(int, int, int, int, int, int, int, int) const;
+template NdArray NdArray::reshape(int, int, int, int, int, int, int, int,
+                                  int) const;
+template NdArray NdArray::reshape(int, int, int, int, int, int, int, int, int,
+                                  int) const;
+template NdArray NdArray::reshape(int, int, int, int, int, int, int, int, int,
+                                  int, int) const;
+// For `NdArray slice(std::initializer_list<I>... slice_index) const`
+using ISII = std::initializer_list<int>;  // Initializer of Slice Index Item
+template NdArray NdArray::slice(ISII) const;
+template NdArray NdArray::slice(ISII, ISII) const;
+template NdArray NdArray::slice(ISII, ISII, ISII) const;
+template NdArray NdArray::slice(ISII, ISII, ISII, ISII) const;
+template NdArray NdArray::slice(ISII, ISII, ISII, ISII, ISII) const;
+template NdArray NdArray::slice(ISII, ISII, ISII, ISII, ISII, ISII) const;
+template NdArray NdArray::slice(ISII, ISII, ISII, ISII, ISII, ISII, ISII) const;
+template NdArray NdArray::slice(ISII, ISII, ISII, ISII, ISII, ISII, ISII,
+                                ISII) const;
+template NdArray NdArray::slice(ISII, ISII, ISII, ISII, ISII, ISII, ISII, ISII,
+                                ISII) const;
+template NdArray NdArray::slice(ISII, ISII, ISII, ISII, ISII, ISII, ISII, ISII,
+                                ISII, ISII) const;
+template NdArray NdArray::slice(ISII, ISII, ISII, ISII, ISII, ISII, ISII, ISII,
+                                ISII, ISII, ISII) const;
 
 // --------------------------------- Operators ---------------------------------
 std::ostream& operator<<(std::ostream& os, const NdArray& x) {
