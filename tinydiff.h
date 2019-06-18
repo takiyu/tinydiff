@@ -17,6 +17,7 @@ class NdArray;
 using InitShape = std::initializer_list<int>;
 using Shape = std::vector<int>;
 using Index = std::vector<int>;
+using SliceIndex = std::vector<std::pair<int, int>>;
 class Variable;
 using Variables = std::vector<Variable>;
 class Function;
@@ -89,10 +90,6 @@ public:
     const float* begin() const;
     const float* end() const;
 
-    NdArray reshape(const Shape& shape) const;
-    template <typename... S>
-    NdArray reshape(S... shape) const;
-
     float& operator[](int i);
     const float& operator[](int i) const;
 
@@ -103,6 +100,10 @@ public:
     float& operator()(I... index);
     template <typename... I>
     const float& operator()(I... index) const;
+
+    NdArray reshape(const Shape& shape) const;
+    template <typename... S>
+    NdArray reshape(S... shape) const;
 
     class Substance;
 
@@ -505,50 +506,6 @@ const float* NdArray::end() const {
     return m_sub->v.get() + m_sub->size;
 }
 
-// ------------------------------- Reshape Method ------------------------------
-NdArray NdArray::reshape(const Shape& shape) const {
-    // Check shape validity
-    size_t unknown_idx = shape.size();
-    size_t size = 1;
-    for (size_t i = 0; i < shape.size(); i++) {
-        if (shape[i] < 0) {
-            if (unknown_idx != shape.size()) {
-                throw std::runtime_error("Invalid shape format (multi-neg)");
-            } else {
-                unknown_idx = i;
-            }
-        } else {
-            size *= static_cast<size_t>(shape[i]);
-        }
-    }
-    Shape new_shape = shape;
-    if (unknown_idx == shape.size()) {
-        if (m_sub->size != size) {
-            std::stringstream ss;
-            ss << "Invalid reshape (" << m_sub->size << "->" << size << ")";
-            throw std::runtime_error(ss.str());
-        }
-    } else {
-        if (m_sub->size % size != 0) {
-            throw std::runtime_error("Invalid reshape (-1)");
-        }
-        new_shape[unknown_idx] = static_cast<int>(m_sub->size / size);
-    }
-
-    // Create reshaped array
-    NdArray ret;
-    ret.m_sub->size = m_sub->size;            // Same size
-    ret.m_sub->shape = std::move(new_shape);  // New shape
-    ret.m_sub->v = m_sub->v;                  // Shared elements
-    return ret;
-}
-
-template <typename... S>
-NdArray NdArray::reshape(S... shape) const {
-    // Pass to `reshape(Shape)`
-    return reshape({shape...});
-}
-
 // ------------------------------- Index Methods -------------------------------
 float& NdArray::operator[](int i) {
     // Use the same implementation of constant method.
@@ -597,6 +554,50 @@ template <typename... I>
 const float& NdArray::operator()(I... index) const {
     // Pass to operator[]
     return (*this)[{index...}];
+}
+
+// ------------------------------- Reshape Method ------------------------------
+NdArray NdArray::reshape(const Shape& shape) const {
+    // Check shape validity
+    size_t unknown_idx = shape.size();
+    size_t size = 1;
+    for (size_t i = 0; i < shape.size(); i++) {
+        if (shape[i] < 0) {
+            if (unknown_idx != shape.size()) {
+                throw std::runtime_error("Invalid shape format (multi-neg)");
+            } else {
+                unknown_idx = i;
+            }
+        } else {
+            size *= static_cast<size_t>(shape[i]);
+        }
+    }
+    Shape new_shape = shape;
+    if (unknown_idx == shape.size()) {
+        if (m_sub->size != size) {
+            std::stringstream ss;
+            ss << "Invalid reshape (" << m_sub->size << "->" << size << ")";
+            throw std::runtime_error(ss.str());
+        }
+    } else {
+        if (m_sub->size % size != 0) {
+            throw std::runtime_error("Invalid reshape (-1)");
+        }
+        new_shape[unknown_idx] = static_cast<int>(m_sub->size / size);
+    }
+
+    // Create reshaped array
+    NdArray ret;
+    ret.m_sub->size = m_sub->size;            // Same size
+    ret.m_sub->shape = std::move(new_shape);  // New shape
+    ret.m_sub->v = m_sub->v;                  // Shared elements
+    return ret;
+}
+
+template <typename... S>
+NdArray NdArray::reshape(S... shape) const {
+    // Pass to `reshape(Shape)`
+    return reshape({shape...});
 }
 
 // ---------------------- Template Method Specializations ----------------------
