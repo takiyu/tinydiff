@@ -344,6 +344,28 @@ TEST_CASE("NdArray") {
                        "[[[[[0, 2, 4]]],\n"
                        "  [[[3, 5, 7]]]]]");
     }
+
+    SECTION("Sub/Mul/Div") {
+        auto m1 = NdArray::Arange(6).reshape(2, 3);
+        auto m2 = NdArray::Arange(3).reshape(3);
+        auto m_sub = m1 - m2;
+        auto m_mul = m1 * m2;
+        auto m_div = m1 / m2;
+        REQUIRE(m_sub.shape() == Shape{2, 3});
+        REQUIRE(m_mul.shape() == Shape{2, 3});
+        REQUIRE(m_div.shape() == Shape{2, 3});
+        RequireNdArray(m_sub,
+                       "[[0, 0, 0],\n"
+                       " [3, 3, 3]]");
+        RequireNdArray(m_mul,
+                       "[[0, 1, 4],\n"
+                       " [0, 4, 10]]");
+        // `0.f / 0.f` can be both of `nan` and `-nan`.
+        m_div(0, 0) = std::abs(m_div(0, 0));
+        RequireNdArray(m_div,
+                       "[[nan, 1, 1],\n"
+                       " [inf, 4, 2.5]]");
+    }
 }
 
 TEST_CASE("AutoGrad") {
