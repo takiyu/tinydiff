@@ -109,6 +109,13 @@ TEST_CASE("NdArray") {
         REQUIRE(sum2 == Approx(55.f));
     }
 
+    SECTION("Float cast") {
+        auto m1 = NdArray::Ones({1, 1});
+        auto m2 = NdArray::Ones({1, 2});
+        REQUIRE(static_cast<float>(m1) == 1);
+        REQUIRE_THROWS(static_cast<float>(m2));
+    }
+
     SECTION("Index access by []") {
         auto m1 = NdArray::Arange(12.f);
         auto m2 = NdArray::Arange(12.f).reshape({3, 4});

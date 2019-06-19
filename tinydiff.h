@@ -89,6 +89,8 @@ public:
     const float* begin() const;
     const float* end() const;
 
+    operator float() const;
+
     float& operator[](int i);
     const float& operator[](int i) const;
 
@@ -757,6 +759,14 @@ const float* NdArray::begin() const {
 
 const float* NdArray::end() const {
     return m_sub->v.get() + m_sub->size;
+}
+
+// ------------------------------- Cast Operator -------------------------------
+NdArray::operator float() const {
+    if (m_sub->size != 1) {
+        throw std::runtime_error("Only size-1 arrays can be casted to float");
+    }
+    return *(m_sub->v.get());
 }
 
 // ------------------------------- Index Methods -------------------------------
