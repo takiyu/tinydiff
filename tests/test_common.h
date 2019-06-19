@@ -406,6 +406,18 @@ TEST_CASE("NdArray") {
                        "[[inf, 10, 5],\n"
                        " [3.33333, 2.5, 2]]");
     }
+
+    SECTION("Single +- operators") {
+        auto m1 = NdArray::Arange(6).reshape(2, 3);
+        auto m_p = +m1;
+        auto m_n = -m1;
+        RequireNdArray(m_p,
+                       "[[0, 1, 2],\n"
+                       " [3, 4, 5]]");
+        RequireNdArray(m_n,
+                       "[[-0, -1, -2],\n"
+                       " [-3, -4, -5]]");
+    }
 }
 
 TEST_CASE("AutoGrad") {

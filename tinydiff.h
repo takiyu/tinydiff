@@ -129,6 +129,8 @@ NdArray operator+(const float& lhs, const NdArray& rhs);
 NdArray operator-(const float& lhs, const NdArray& rhs);
 NdArray operator*(const float& lhs, const NdArray& rhs);
 NdArray operator/(const float& lhs, const NdArray& rhs);
+NdArray operator+(const NdArray& x);
+NdArray operator-(const NdArray& x);
 
 // =============================================================================
 // ================================== Variable =================================
@@ -1061,6 +1063,20 @@ NdArray operator*(const float& lhs, const NdArray& rhs) {
 
 NdArray operator/(const float& lhs, const NdArray& rhs) {
     return ApplyBroadcastOp(lhs, rhs, DivOp);
+}
+
+NdArray operator+(const NdArray& x) {
+    return x;
+}
+
+NdArray operator-(const NdArray& x) {
+    NdArray ret(x.shape());
+    const float* x_data = x.data();
+    float* ret_data = ret.data();
+    for (size_t i = 0; i < ret.size(); i++) {
+        *(ret_data++) = -*(x_data++);  // Copy negative
+    }
+    return ret;
 }
 
 // =============================================================================
