@@ -333,23 +333,16 @@ TEST_CASE("NdArray") {
         auto m3 = NdArray::Arange(3).reshape(1, 3);
         auto m12 = m1 + m2;
         auto m13 = m1 + m3;
-        auto m23 = m2 + m3;
         REQUIRE(m12.shape() == Shape{1, 2, 1, 2, 3});
-        REQUIRE(m13.shape() == Shape{1, 2, 1, 2, 3});
-        REQUIRE(m13.shape() == Shape{2, 3});
-        REQUIRE(m23.shape() == Shape{2, 3});
-        std::cout << m12 << std::endl;
-        std::cout << m13 << std::endl;
-        std::cout << m23 << std::endl;
-//         RequireNdArray(m12,
-//                        "[[0, 1, 2],\n"
-//                        " [4, 5, 6]]");
-//         RequireNdArray(m13,
-//                        "[[0, 2, 4],\n"
-//                        " [3, 5, 7]]");
-//         RequireNdArray(m23,
-//                        "[[0, 1, 2],\n"
-//                        " [1, 2, 3]]");
+        REQUIRE(m13.shape() == Shape{1, 2, 1, 1, 3});
+        RequireNdArray(m12,
+                       "[[[[[0, 1, 2],\n"
+                       "    [1, 2, 3]]],\n"
+                       "  [[[3, 4, 5],\n"
+                       "    [4, 5, 6]]]]]");
+        RequireNdArray(m13,
+                       "[[[[[0, 2, 4]]],\n"
+                       "  [[[3, 5, 7]]]]]");
     }
 }
 

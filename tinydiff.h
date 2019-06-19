@@ -372,16 +372,15 @@ static void ApplyBroadcastOpImpl(float* ret_data, const float* l_data,
                                  const std::vector<int>& ret_child_sizes,
                                  const std::vector<int>& l_child_sizes,
                                  const std::vector<int>& r_child_sizes,
-                                 size_t l_offset, size_t r_offset, size_t depth,
-                                 F op) {
+                                 size_t depth, F op) {
     if (depth < ret_shape.size()) {
         // Fetch shapes
-        const int l_s = l_shape[depth + l_offset];
-        const int r_s = r_shape[depth + r_offset];
+        const int l_s = l_shape[depth];
+        const int r_s = r_shape[depth];
         // Fetch child sizes
         const int ret_child_size = ret_child_sizes[depth];
-        const int l_child_size = l_child_sizes[depth + l_offset];
-        const int r_child_size = r_child_sizes[depth + r_offset];
+        const int l_child_size = l_child_sizes[depth];
+        const int r_child_size = r_child_sizes[depth];
         // Switch by broadcast pattern
         if (l_s == r_s) {
             // No broadcast
@@ -389,8 +388,8 @@ static void ApplyBroadcastOpImpl(float* ret_data, const float* l_data,
                 // Apply recursively
                 ApplyBroadcastOpImpl(ret_data, l_data, r_data, ret_shape,
                                      l_shape, r_shape, ret_child_sizes,
-                                     l_child_sizes, r_child_sizes, l_offset,
-                                     r_offset, depth + 1, op);
+                                     l_child_sizes, r_child_sizes, depth + 1,
+                                     op);
                 // Next pointer
                 ret_data += ret_child_size;
                 l_data += l_child_size;
@@ -402,8 +401,8 @@ static void ApplyBroadcastOpImpl(float* ret_data, const float* l_data,
                 // Apply recursively
                 ApplyBroadcastOpImpl(ret_data, l_data, r_data, ret_shape,
                                      l_shape, r_shape, ret_child_sizes,
-                                     l_child_sizes, r_child_sizes, l_offset,
-                                     r_offset, depth + 1, op);
+                                     l_child_sizes, r_child_sizes, depth + 1,
+                                     op);
                 // Next pointer without left
                 ret_data += ret_child_size;
                 r_data += r_child_size;
@@ -414,8 +413,8 @@ static void ApplyBroadcastOpImpl(float* ret_data, const float* l_data,
                 // Apply recursively
                 ApplyBroadcastOpImpl(ret_data, l_data, r_data, ret_shape,
                                      l_shape, r_shape, ret_child_sizes,
-                                     l_child_sizes, r_child_sizes, l_offset,
-                                     r_offset, depth + 1, op);
+                                     l_child_sizes, r_child_sizes, depth + 1,
+                                     op);
                 // Next pointer without left
                 ret_data += ret_child_size;
                 l_data += l_child_size;
@@ -439,6 +438,18 @@ static void ApplyBroadcastOpImplFast(float* ret_data, const float* l_data,
     }
 }
 
+Shape PadShape(const Shape& shape, size_t size) {
+    if (size < shape.size()) {
+        throw std::runtime_error("Invalid shape to pad");
+    }
+    const size_t n_pad = size - shape.size();
+    Shape ret_shape;
+    ret_shape.reserve(size);
+    ret_shape.resize(n_pad, 1);  // Fill by 1
+    ret_shape.insert(ret_shape.end(), shape.begin(), shape.end());  // Concat
+    return ret_shape;
+}
+
 template <typename F>
 static NdArray ApplyBroadcastOp(const NdArray& lhs, const NdArray& rhs, F op) {
     const Shape& l_shape = lhs.shape();
@@ -453,21 +464,20 @@ static NdArray ApplyBroadcastOp(const NdArray& lhs, const NdArray& rhs, F op) {
         // Check it is possible to broadcast
         const Shape& ret_shape = CheckBroadcastable(lhs, rhs);
 
+        // Pre-compute padded shape
+        const Shape& l_shape_pad = PadShape(l_shape, ret_shape.size());
+        const Shape& r_shape_pad = PadShape(r_shape, ret_shape.size());
+
         // Pre-compute child sizes
         const std::vector<int>& ret_child_sizes = ComputeChildSizes(ret_shape);
-        const std::vector<int>& l_child_sizes = ComputeChildSizes(l_shape);
-        const std::vector<int>& r_child_sizes = ComputeChildSizes(r_shape);
-
-        // Pre-compute depth offset
-        const bool r_big = (l_shape.size() < r_shape.size());
-        const size_t l_offset = r_big ? r_shape.size() - l_shape.size() : 0;
-        const size_t r_offset = !r_big ? l_shape.size() - r_shape.size() : 0;
+        const std::vector<int>& l_child_sizes = ComputeChildSizes(l_shape_pad);
+        const std::vector<int>& r_child_sizes = ComputeChildSizes(r_shape_pad);
 
         // Apply with broadcast
         NdArray ret(ret_shape);
         ApplyBroadcastOpImpl(ret.data(), lhs.data(), rhs.data(), ret_shape,
-                             l_shape, r_shape, ret_child_sizes, l_child_sizes,
-                             r_child_sizes, l_offset, r_offset, 0, op);
+                             l_shape_pad, r_shape_pad, ret_child_sizes,
+                             l_child_sizes, r_child_sizes, 0, op);
 
         return ret;
     }
