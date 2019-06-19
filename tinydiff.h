@@ -377,51 +377,21 @@ static void ApplyBroadcastOpImpl(float* ret_data, const float* l_data,
         // Fetch shapes
         const int l_s = l_shape[depth];
         const int r_s = r_shape[depth];
-        // Fetch child sizes
-        const int ret_child_size = ret_child_sizes[depth];
-        const int l_child_size = l_child_sizes[depth];
-        const int r_child_size = r_child_sizes[depth];
-        // Switch by broadcast pattern
-        if (l_s == r_s) {
-            // No broadcast
-            for (int i = 0; i < l_s; i++) {
-                // Apply recursively
-                ApplyBroadcastOpImpl(ret_data, l_data, r_data, ret_shape,
-                                     l_shape, r_shape, ret_child_sizes,
-                                     l_child_sizes, r_child_sizes, depth + 1,
-                                     op);
-                // Next pointer
-                ret_data += ret_child_size;
-                l_data += l_child_size;
-                r_data += r_child_size;
-            }
-        } else if (l_s == 1) {
-            // Left broadcast
-            for (int i = 0; i < r_s; i++) {
-                // Apply recursively
-                ApplyBroadcastOpImpl(ret_data, l_data, r_data, ret_shape,
-                                     l_shape, r_shape, ret_child_sizes,
-                                     l_child_sizes, r_child_sizes, depth + 1,
-                                     op);
-                // Next pointer without left
-                ret_data += ret_child_size;
-                r_data += r_child_size;
-            }
-        } else if (r_s == 1) {
-            // Right broadcast
-            for (int i = 0; i < l_s; i++) {
-                // Apply recursively
-                ApplyBroadcastOpImpl(ret_data, l_data, r_data, ret_shape,
-                                     l_shape, r_shape, ret_child_sizes,
-                                     l_child_sizes, r_child_sizes, depth + 1,
-                                     op);
-                // Next pointer without left
-                ret_data += ret_child_size;
-                l_data += l_child_size;
-            }
-        } else {
-            // Non broadcastable shapes must not be passed.
-            throw std::runtime_error("Bug of broadcast. Please report.");
+        // Decide pointer steps by broadcast patterns.
+        const int ret_step = ret_child_sizes[depth];
+        const int l_step = (l_s == r_s || r_s == 1) ? l_child_sizes[depth] : 0;
+        const int r_step = (l_s == r_s || l_s == 1) ? r_child_sizes[depth] : 0;
+        // Applying loop
+        const int n_loop = std::max(l_s, r_s);
+        for (int i = 0; i < n_loop; i++) {
+            // Apply recursively
+            ApplyBroadcastOpImpl(ret_data, l_data, r_data, ret_shape, l_shape,
+                                 r_shape, ret_child_sizes, l_child_sizes,
+                                 r_child_sizes, depth + 1, op);
+            // Next pointer
+            ret_data += ret_step;
+            l_data += l_step;
+            r_data += r_step;
         }
     } else {
         // Apply operator
@@ -445,7 +415,7 @@ Shape PadShape(const Shape& shape, size_t size) {
     const size_t n_pad = size - shape.size();
     Shape ret_shape;
     ret_shape.reserve(size);
-    ret_shape.resize(n_pad, 1);  // Fill by 1
+    ret_shape.resize(n_pad, 1);                                     // Fill by 1
     ret_shape.insert(ret_shape.end(), shape.begin(), shape.end());  // Concat
     return ret_shape;
 }
