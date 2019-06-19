@@ -8,6 +8,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <random>
 #include <sstream>
 #include <vector>
 
@@ -78,6 +79,15 @@ public:
     static NdArray Arange(float stop);
     static NdArray Arange(float start, float stop, float step = 1.f);
 
+    static void Seed();
+    static void Seed(uint32_t seed);
+    static NdArray Uniform(float low = 0.f, float high = 1.f,
+                           const Shape& shape = {1});
+    static NdArray Uniform(const Shape& shape);
+    static NdArray Normal(float loc = 0.f, float scale = 1.f,
+                          const Shape& shape = {1});
+    static NdArray Normal(const Shape& shape);
+
     bool empty() const;
     size_t size() const;
     const Shape& shape() const;
@@ -114,6 +124,9 @@ public:
 private:
     std::shared_ptr<Substance> m_sub;
     NdArray(std::shared_ptr<Substance> sub);
+
+    static std::random_device s_rand_seed;
+    static std::mt19937 s_rand_engine;
 };
 
 // --------------------------------- Operators ---------------------------------
@@ -278,6 +291,18 @@ template <typename FList>
 void CopyFListElems(const FList& init_list, float* data) {
     // Pass to impl (create pointer instance)
     CopyFListElemsImpl(init_list, data);
+}
+
+template <typename D, typename R>
+NdArray CreateRandomArray(const Shape& shape, D&& dist, R&& rand_engine) {
+    // Create empty array
+    NdArray ret(shape);
+    // Fill by random value
+    float* data = ret.data();
+    for (size_t i = 0; i < ret.size(); i++) {
+        *(data++) = static_cast<float>(dist(rand_engine));
+    }
+    return ret;
 }
 
 std::vector<int> ComputeChildSizes(const Shape& shape) {
@@ -620,6 +645,10 @@ public:
     std::shared_ptr<float> v;  // C++17: Replace with `shared_ptr<float[]>`.
 };
 
+// ------------------------------- Static Member -------------------------------
+std::random_device NdArray::s_rand_seed;
+std::mt19937 NdArray::s_rand_engine(s_rand_seed());
+
 // -------------------- Constructors with Float Initializers -------------------
 NdArray::NdArray(FloatList<0> init_list) : NdArray(CheckFListShape(init_list)) {
     // Fill after empty initialization
@@ -715,12 +744,44 @@ NdArray NdArray::Arange(float stop) {
 
 NdArray NdArray::Arange(float start, float stop, float step) {
     const size_t n = static_cast<size_t>(std::ceil((stop - start) / step));
+    // Create empty array
     NdArray ret({static_cast<int>(n)});
+    // Fill by step
     float* data = ret.data();
     for (size_t i = 0; i < n; i++) {
         data[i] = start + step * static_cast<float>(i);
     }
     return ret;
+}
+
+void NdArray::Seed() {
+    s_rand_engine = std::mt19937(s_rand_seed());
+}
+
+void NdArray::Seed(uint32_t seed) {
+    s_rand_engine = std::mt19937(seed);
+}
+
+NdArray NdArray::Uniform(float low, float high, const Shape& shape) {
+    // Create uniform distribution
+    std::uniform_real_distribution<> dist(low, high);
+    // Create random array
+    return CreateRandomArray(shape, dist, s_rand_engine);
+}
+
+NdArray NdArray::Uniform(const Shape& shape) {
+    return Uniform(0.f, 1.f, shape);
+}
+
+NdArray NdArray::Normal(float loc, float scale, const Shape& shape) {
+    // Create normal distribution
+    std::normal_distribution<> dist(loc, scale);
+    // Create random array
+    return CreateRandomArray(shape, dist, s_rand_engine);
+}
+
+NdArray NdArray::Normal(const Shape& shape) {
+    return Normal(0.f, 1.f, shape);
 }
 
 // ------------------------------- Basic Methods -------------------------------

@@ -10,6 +10,20 @@ static void RequireNdArray(const NdArray& m, const std::string& str) {
     REQUIRE(ss.str() == str);
 }
 
+static bool IsSameNdArray(const NdArray& m1, const NdArray& m2) {
+    if (m1.shape() != m2.shape()) {
+        return false;
+    }
+    const float* data1 = m1.data();
+    const float* data2 = m2.data();
+    for (size_t i = 0; i < m1.size(); i++) {
+        if (*(data1++) != *(data2++)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 TEST_CASE("NdArray") {
     SECTION("Empty") {
         const NdArray m1;
@@ -94,6 +108,28 @@ TEST_CASE("NdArray") {
         RequireNdArray(m1, "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]");
         RequireNdArray(m2, "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]");
         RequireNdArray(m3, "[5, 5.1, 5.2, 5.3, 5.4]");
+    }
+
+    SECTION("Random uniform") {
+        NdArray::Seed(0);
+        const auto m1 = NdArray::Uniform({2, 3});
+        NdArray::Seed(0);
+        const auto m2 = NdArray::Uniform({2, 3});
+        NdArray::Seed(1);
+        const auto m3 = NdArray::Uniform({2, 3});
+        REQUIRE(IsSameNdArray(m1, m2));
+        REQUIRE(!IsSameNdArray(m1, m3));
+    }
+
+    SECTION("Random normal") {
+        NdArray::Seed(0);
+        const auto m1 = NdArray::Normal({2, 3});
+        NdArray::Seed(0);
+        const auto m2 = NdArray::Normal({2, 3});
+        NdArray::Seed(1);
+        const auto m3 = NdArray::Normal({2, 3});
+        REQUIRE(IsSameNdArray(m1, m2));
+        REQUIRE(!IsSameNdArray(m1, m3));
     }
 
     SECTION("Begin/End") {
