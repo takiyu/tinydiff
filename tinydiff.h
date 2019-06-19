@@ -68,7 +68,6 @@ public:
     static NdArray Empty(const Shape& shape);
     static NdArray Zeros(const Shape& shape);
     static NdArray Ones(const Shape& shape);
-
     template <typename... S>
     static NdArray Empty(S... shape);
     template <typename... S>
@@ -95,7 +94,6 @@ public:
 
     float& operator[](const Index& index);
     const float& operator[](const Index& index) const;
-
     template <typename... I>
     float& operator()(I... index);
     template <typename... I>
@@ -118,6 +116,11 @@ private:
 
 // --------------------------------- Operators ---------------------------------
 std::ostream& operator<<(std::ostream& os, const NdArray& x);
+std::ostream& operator<<(std::ostream& os, const Shape& shape);
+NdArray operator+(const NdArray& lhs, const NdArray& rhs);
+NdArray operator-(const NdArray& lhs, const NdArray& rhs);
+NdArray operator*(const NdArray& lhs, const NdArray& rhs);
+NdArray operator/(const NdArray& lhs, const NdArray& rhs);
 
 // =============================================================================
 // ================================== Variable =================================
@@ -149,8 +152,8 @@ private:
 
 // --------------------------------- Operators ---------------------------------
 std::ostream& operator<<(std::ostream& os, Variable& x);
-Variable operator+(Variable& os, Variable& x);
-Variable operator*(Variable& os, Variable& x);
+Variable operator+(const Variable& lhs, const Variable& rhs);
+Variable operator*(const Variable& lhs, const Variable& rhs);
 
 // =============================================================================
 // ================================== Function =================================
@@ -265,22 +268,37 @@ void CopyFListElems(const FList& init_list, float* data) {
     CopyFListElemsImpl(init_list, data);
 }
 
+std::vector<int> ComputeChildSizes(const Shape& shape) {
+    const size_t n_shape = shape.size();
+    if (n_shape == 0) {
+        return {};
+    }
+    // Compute child sizes from back (the number of children for each dimension)
+    std::vector<int> child_sizes(n_shape, 1);
+    int size = 1;
+    for (size_t depth = n_shape - 1; 0 < depth; depth--) {
+        child_sizes[depth] = size;
+        size *= shape[depth];
+    }
+    child_sizes[0] = size;
+    return child_sizes;
+}
+
 static void CopySliceImpl(const float*& src_data, float*& dst_data,
                           const Shape& src_shape, const SliceIndex& slice_index,
-                          const std::vector<int>& offsets, size_t depth) {
+                          const std::vector<int>& child_sizes, size_t depth) {
     if (depth < src_shape.size()) {
         const auto& si = slice_index[depth];
-
-        src_data += offsets[depth] * si.first;
-
+        // Add previous offset
+        src_data += child_sizes[depth] * si.first;
+        // Copy
         for (int i = si.first; i < si.second; i++) {
             // Recursive call
-            CopySliceImpl(src_data, dst_data, src_shape, slice_index, offsets,
-                          depth + 1);
+            CopySliceImpl(src_data, dst_data, src_shape, slice_index,
+                          child_sizes, depth + 1);
         }
-
-        src_data += offsets[depth] * (src_shape[depth] - si.second);
-
+        // Add post offset
+        src_data += child_sizes[depth] * (src_shape[depth] - si.second);
     } else {
         // Copy
         *(dst_data++) = *(src_data++);
@@ -291,15 +309,8 @@ static NdArray CopySlice(const NdArray& src, const Shape& slice_shape,
                          const SliceIndex& slice_index) {
     const Shape& src_shape = src.shape();
 
-    // Pre-compute index offsets (the number of children for each dimension)
-    const size_t n_shape = src_shape.size();
-    std::vector<int> offsets(n_shape, 1);
-    int offset = 1;
-    for (size_t depth = n_shape - 1; 0 < depth; depth--) {
-        offsets[depth] = offset;
-        offset *= src_shape[depth];
-    }
-    offsets[0] = offset;
+    // Pre-compute child sizes (index offsets)
+    const std::vector<int>& child_sizes = ComputeChildSizes(src_shape);
 
     // Create slice instance
     NdArray ret(slice_shape);
@@ -307,7 +318,7 @@ static NdArray CopySlice(const NdArray& src, const Shape& slice_shape,
     // Start to copy
     const float* src_data = src.data();
     float* dst_data = ret.data();
-    CopySliceImpl(src_data, dst_data, src_shape, slice_index, offsets, 0);
+    CopySliceImpl(src_data, dst_data, src_shape, slice_index, child_sizes, 0);
 
     return ret;
 }
@@ -317,6 +328,165 @@ static std::pair<int, int> CvtToSliceIndexItem(std::initializer_list<int> l) {
         throw std::runtime_error("Invalid slice index format");
     }
     return {*l.begin(), *(l.begin() + 1)};
+}
+
+static Shape CheckBroadcastable(const NdArray& lhs, const NdArray& rhs) {
+    // We assuming left array has deeper shape than right one.
+    const Shape& l_shape = lhs.shape();
+    const Shape& r_shape = rhs.shape();
+    if (l_shape.size() < r_shape.size()) {
+        return CheckBroadcastable(rhs, lhs);  // Swap
+    }
+    // `l_shape.size()` is maximum depth.
+
+    // Compute broadcasted shape
+    Shape shape(l_shape.size());
+    size_t r_offset = l_shape.size() - r_shape.size();
+    for (size_t i = 0; i < l_shape.size(); i++) {
+        if (i < r_offset) {
+            shape[i] = l_shape[i];
+        } else {
+            const int l = l_shape[i];
+            const int r = r_shape[i - r_offset];
+            if (l == r) {
+                shape[i] = l;  // no broadcast
+            } else if (l == 1) {
+                shape[i] = r;  // left broadcast
+            } else if (r == 1) {
+                shape[i] = l;  // right broadcast
+            } else {
+                std::stringstream ss;
+                ss << "Non operatable shape";
+                ss << " (" << l_shape << " vs " << r_shape << ")";
+                throw std::runtime_error(ss.str());
+            }
+        }
+    }
+    return shape;
+}
+
+template <typename F>
+static void ApplyBroadcastOpImpl(float* ret_data, const float* l_data,
+                                 const float* r_data, const Shape& ret_shape,
+                                 const Shape& l_shape, const Shape& r_shape,
+                                 const std::vector<int>& ret_child_sizes,
+                                 const std::vector<int>& l_child_sizes,
+                                 const std::vector<int>& r_child_sizes,
+                                 size_t l_offset, size_t r_offset, size_t depth,
+                                 F op) {
+    if (depth < ret_shape.size()) {
+        // Fetch shapes
+        const int l_s = l_shape[depth + l_offset];
+        const int r_s = r_shape[depth + r_offset];
+        // Fetch child sizes
+        const int ret_child_size = ret_child_sizes[depth];
+        const int l_child_size = l_child_sizes[depth + l_offset];
+        const int r_child_size = r_child_sizes[depth + r_offset];
+        // Switch by broadcast pattern
+        if (l_s == r_s) {
+            // No broadcast
+            for (int i = 0; i < l_s; i++) {
+                // Apply recursively
+                ApplyBroadcastOpImpl(ret_data, l_data, r_data, ret_shape,
+                                     l_shape, r_shape, ret_child_sizes,
+                                     l_child_sizes, r_child_sizes, l_offset,
+                                     r_offset, depth + 1, op);
+                // Next pointer
+                ret_data += ret_child_size;
+                l_data += l_child_size;
+                r_data += r_child_size;
+            }
+        } else if (l_s == 1) {
+            // Left broadcast
+            for (int i = 0; i < r_s; i++) {
+                // Apply recursively
+                ApplyBroadcastOpImpl(ret_data, l_data, r_data, ret_shape,
+                                     l_shape, r_shape, ret_child_sizes,
+                                     l_child_sizes, r_child_sizes, l_offset,
+                                     r_offset, depth + 1, op);
+                // Next pointer without left
+                ret_data += ret_child_size;
+                r_data += r_child_size;
+            }
+        } else if (r_s == 1) {
+            // Right broadcast
+            for (int i = 0; i < l_s; i++) {
+                // Apply recursively
+                ApplyBroadcastOpImpl(ret_data, l_data, r_data, ret_shape,
+                                     l_shape, r_shape, ret_child_sizes,
+                                     l_child_sizes, r_child_sizes, l_offset,
+                                     r_offset, depth + 1, op);
+                // Next pointer without left
+                ret_data += ret_child_size;
+                l_data += l_child_size;
+            }
+        } else {
+            // Non broadcastable shapes must not be passed.
+            throw std::runtime_error("Bug of broadcast. Please report.");
+        }
+    } else {
+        // Apply operator
+        *ret_data = op(*l_data, *r_data);
+    }
+}
+
+template <typename F>
+static void ApplyBroadcastOpImplFast(float* ret_data, const float* l_data,
+                                     const float* r_data, size_t size, F op) {
+    // Simply apply all
+    for (size_t i = 0; i < size; i++) {
+        *(ret_data++) = op(*(l_data++), *(r_data++));
+    }
+}
+
+template <typename F>
+static NdArray ApplyBroadcastOp(const NdArray& lhs, const NdArray& rhs, F op) {
+    const Shape& l_shape = lhs.shape();
+    const Shape& r_shape = rhs.shape();
+    if (l_shape == r_shape) {
+        // Apply without broadcast because of same size.
+        NdArray ret(l_shape);
+        ApplyBroadcastOpImplFast(ret.data(), lhs.data(), rhs.data(), ret.size(),
+                                 op);
+        return ret;
+    } else {
+        // Check it is possible to broadcast
+        const Shape& ret_shape = CheckBroadcastable(lhs, rhs);
+
+        // Pre-compute child sizes
+        const std::vector<int>& ret_child_sizes = ComputeChildSizes(ret_shape);
+        const std::vector<int>& l_child_sizes = ComputeChildSizes(l_shape);
+        const std::vector<int>& r_child_sizes = ComputeChildSizes(r_shape);
+
+        // Pre-compute depth offset
+        const bool r_big = (l_shape.size() < r_shape.size());
+        const size_t l_offset = r_big ? r_shape.size() - l_shape.size() : 0;
+        const size_t r_offset = !r_big ? l_shape.size() - r_shape.size() : 0;
+
+        // Apply with broadcast
+        NdArray ret(ret_shape);
+        ApplyBroadcastOpImpl(ret.data(), lhs.data(), rhs.data(), ret_shape,
+                             l_shape, r_shape, ret_child_sizes, l_child_sizes,
+                             r_child_sizes, l_offset, r_offset, 0, op);
+
+        return ret;
+    }
+}
+
+static float AddOp(const float& lhs, const float& rhs) {
+    return lhs + rhs;
+}
+
+static float SubOp(const float& lhs, const float& rhs) {
+    return lhs - rhs;
+}
+
+static float MulOp(const float& lhs, const float& rhs) {
+    return lhs * rhs;
+}
+
+static float DivOp(const float& lhs, const float& rhs) {
+    return lhs / rhs;
 }
 
 static void OutputArrayLine(std::ostream& os, const float*& data, size_t size) {
@@ -819,6 +989,34 @@ std::ostream& operator<<(std::ostream& os, const NdArray& x) {
     return os;
 }
 
+std::ostream& operator<<(std::ostream& os, const Shape& shape) {
+    os << "[";
+    for (size_t i = 0; i < shape.size(); i++) {
+        os << shape[i];
+        if (i < shape.size() - 1) {
+            os << ", ";
+        }
+    }
+    os << "]";
+    return os;
+}
+
+NdArray operator+(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyBroadcastOp(lhs, rhs, AddOp);
+}
+
+NdArray operator-(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyBroadcastOp(lhs, rhs, SubOp);
+}
+
+NdArray operator*(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyBroadcastOp(lhs, rhs, MulOp);
+}
+
+NdArray operator/(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyBroadcastOp(lhs, rhs, DivOp);
+}
+
 // =============================================================================
 // ============================ Variable Definition ============================
 // =============================================================================
@@ -919,11 +1117,11 @@ std::ostream& operator<<(std::ostream& os, Variable& x) {
     return os << x.data();
 }
 
-Variable operator+(Variable& lhs, Variable& rhs) {
+Variable operator+(const Variable& lhs, const Variable& rhs) {
     return F::add(lhs, rhs);
 }
 
-Variable operator*(Variable& lhs, Variable& rhs) {
+Variable operator*(const Variable& lhs, const Variable& rhs) {
     return F::mul(lhs, rhs);
 }
 

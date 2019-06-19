@@ -290,6 +290,67 @@ TEST_CASE("NdArray") {
                        "  [[165, 166],\n"
                        "   [169, 170]]]]");
     }
+
+    SECTION("Add same shape") {
+        auto m1 = NdArray::Arange(12).reshape(2, 3, 2);
+        auto m2 = NdArray::Ones({2, 3, 2});
+        auto m3 = m1 + m2;
+        REQUIRE(m1.shape() == m2.shape());
+        REQUIRE(m1.shape() == m3.shape());
+        RequireNdArray(m3,
+                       "[[[1, 2],\n"
+                       "  [3, 4],\n"
+                       "  [5, 6]],\n"
+                       " [[7, 8],\n"
+                       "  [9, 10],\n"
+                       "  [11, 12]]]");
+    }
+
+    SECTION("Add broadcast 2-dim") {
+        auto m1 = NdArray::Arange(6).reshape(2, 3);
+        auto m2 = NdArray::Arange(2).reshape(2, 1);
+        auto m3 = NdArray::Arange(3).reshape(1, 3);
+        auto m12 = m1 + m2;
+        auto m13 = m1 + m3;
+        auto m23 = m2 + m3;
+        REQUIRE(m12.shape() == Shape{2, 3});
+        REQUIRE(m13.shape() == Shape{2, 3});
+        REQUIRE(m23.shape() == Shape{2, 3});
+        RequireNdArray(m12,
+                       "[[0, 1, 2],\n"
+                       " [4, 5, 6]]");
+        RequireNdArray(m13,
+                       "[[0, 2, 4],\n"
+                       " [3, 5, 7]]");
+        RequireNdArray(m23,
+                       "[[0, 1, 2],\n"
+                       " [1, 2, 3]]");
+    }
+
+    SECTION("Add broadcast high-dim") {
+        auto m1 = NdArray::Arange(6).reshape(1, 2, 1, 1, 3);
+        auto m2 = NdArray::Arange(2).reshape(2, 1);
+        auto m3 = NdArray::Arange(3).reshape(1, 3);
+        auto m12 = m1 + m2;
+        auto m13 = m1 + m3;
+        auto m23 = m2 + m3;
+        REQUIRE(m12.shape() == Shape{1, 2, 1, 2, 3});
+        REQUIRE(m13.shape() == Shape{1, 2, 1, 2, 3});
+        REQUIRE(m13.shape() == Shape{2, 3});
+        REQUIRE(m23.shape() == Shape{2, 3});
+        std::cout << m12 << std::endl;
+        std::cout << m13 << std::endl;
+        std::cout << m23 << std::endl;
+//         RequireNdArray(m12,
+//                        "[[0, 1, 2],\n"
+//                        " [4, 5, 6]]");
+//         RequireNdArray(m13,
+//                        "[[0, 2, 4],\n"
+//                        " [3, 5, 7]]");
+//         RequireNdArray(m23,
+//                        "[[0, 1, 2],\n"
+//                        " [1, 2, 3]]");
+    }
 }
 
 TEST_CASE("AutoGrad") {
