@@ -121,6 +121,14 @@ NdArray operator+(const NdArray& lhs, const NdArray& rhs);
 NdArray operator-(const NdArray& lhs, const NdArray& rhs);
 NdArray operator*(const NdArray& lhs, const NdArray& rhs);
 NdArray operator/(const NdArray& lhs, const NdArray& rhs);
+NdArray operator+(const NdArray& lhs, const float& rhs);
+NdArray operator-(const NdArray& lhs, const float& rhs);
+NdArray operator*(const NdArray& lhs, const float& rhs);
+NdArray operator/(const NdArray& lhs, const float& rhs);
+NdArray operator+(const float& lhs, const NdArray& rhs);
+NdArray operator-(const float& lhs, const NdArray& rhs);
+NdArray operator*(const float& lhs, const NdArray& rhs);
+NdArray operator/(const float& lhs, const NdArray& rhs);
 
 // =============================================================================
 // ================================== Variable =================================
@@ -425,7 +433,7 @@ static NdArray ApplyBroadcastOp(const NdArray& lhs, const NdArray& rhs, F op) {
     const Shape& l_shape = lhs.shape();
     const Shape& r_shape = rhs.shape();
     if (l_shape == r_shape) {
-        // Apply without broadcast because of same size.
+        // Apply without broadcast because of same size for speed up.
         NdArray ret(l_shape);
         ApplyBroadcastOpImplFast(ret.data(), lhs.data(), rhs.data(), ret.size(),
                                  op);
@@ -451,6 +459,32 @@ static NdArray ApplyBroadcastOp(const NdArray& lhs, const NdArray& rhs, F op) {
 
         return ret;
     }
+}
+
+template <typename F>
+static NdArray ApplyBroadcastOp(const NdArray& lhs, const float& rhs, F op) {
+    // Broadcast right float
+    NdArray ret(lhs.shape());
+    const float* l_data = lhs.data();
+    float* ret_data = ret.data();
+    // Simply apply all
+    for (size_t i = 0; i < ret.size(); i++) {
+        *(ret_data++) = op(*(l_data++), rhs);
+    }
+    return ret;
+}
+
+template <typename F>
+static NdArray ApplyBroadcastOp(const float& lhs, const NdArray& rhs, F op) {
+    // Broadcast left float
+    NdArray ret(rhs.shape());
+    const float* r_data = rhs.data();
+    float* ret_data = ret.data();
+    // Simply apply all
+    for (size_t i = 0; i < ret.size(); i++) {
+        *(ret_data++) = op(lhs, *(r_data++));
+    }
+    return ret;
 }
 
 static float AddOp(const float& lhs, const float& rhs) {
@@ -994,6 +1028,38 @@ NdArray operator*(const NdArray& lhs, const NdArray& rhs) {
 }
 
 NdArray operator/(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyBroadcastOp(lhs, rhs, DivOp);
+}
+
+NdArray operator+(const NdArray& lhs, const float& rhs) {
+    return ApplyBroadcastOp(lhs, rhs, AddOp);
+}
+
+NdArray operator-(const NdArray& lhs, const float& rhs) {
+    return ApplyBroadcastOp(lhs, rhs, SubOp);
+}
+
+NdArray operator*(const NdArray& lhs, const float& rhs) {
+    return ApplyBroadcastOp(lhs, rhs, MulOp);
+}
+
+NdArray operator/(const NdArray& lhs, const float& rhs) {
+    return ApplyBroadcastOp(lhs, rhs, DivOp);
+}
+
+NdArray operator+(const float& lhs, const NdArray& rhs) {
+    return ApplyBroadcastOp(lhs, rhs, AddOp);
+}
+
+NdArray operator-(const float& lhs, const NdArray& rhs) {
+    return ApplyBroadcastOp(lhs, rhs, SubOp);
+}
+
+NdArray operator*(const float& lhs, const NdArray& rhs) {
+    return ApplyBroadcastOp(lhs, rhs, MulOp);
+}
+
+NdArray operator/(const float& lhs, const NdArray& rhs) {
     return ApplyBroadcastOp(lhs, rhs, DivOp);
 }
 

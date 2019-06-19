@@ -366,6 +366,46 @@ TEST_CASE("NdArray") {
                        "[[nan, 1, 1],\n"
                        " [inf, 4, 2.5]]");
     }
+
+    SECTION("Arithmetic operators (ndarray, float)") {
+        auto m1 = NdArray::Arange(6).reshape(2, 3);
+        auto m_add = m1 + 10.f;
+        auto m_sub = m1 - 10.f;
+        auto m_mul = m1 * 10.f;
+        auto m_div = m1 / 10.f;
+        RequireNdArray(m_add,
+                       "[[10, 11, 12],\n"
+                       " [13, 14, 15]]");
+        RequireNdArray(m_sub,
+                       "[[-10, -9, -8],\n"
+                       " [-7, -6, -5]]");
+        RequireNdArray(m_mul,
+                       "[[0, 10, 20],\n"
+                       " [30, 40, 50]]");
+        RequireNdArray(m_div,
+                       "[[0, 0.1, 0.2],\n"
+                       " [0.3, 0.4, 0.5]]");
+    }
+
+    SECTION("Arithmetic operators (float, ndarray)") {
+        auto m1 = NdArray::Arange(6).reshape(2, 3);
+        auto m_add = 10.f + m1;
+        auto m_sub = 10.f - m1;
+        auto m_mul = 10.f * m1;
+        auto m_div = 10.f / m1;
+        RequireNdArray(m_add,
+                       "[[10, 11, 12],\n"
+                       " [13, 14, 15]]");
+        RequireNdArray(m_sub,
+                       "[[10, 9, 8],\n"
+                       " [7, 6, 5]]");
+        RequireNdArray(m_mul,
+                       "[[0, 10, 20],\n"
+                       " [30, 40, 50]]");
+        RequireNdArray(m_div,
+                       "[[inf, 10, 5],\n"
+                       " [3.33333, 2.5, 2]]");
+    }
 }
 
 TEST_CASE("AutoGrad") {
