@@ -29,7 +29,7 @@ TEST_CASE("NdArray") {
         const NdArray m1;
         REQUIRE(m1.empty());
         REQUIRE(m1.size() == 0);
-        REQUIRE(m1.shape() == Shape{0});
+        REQUIRE(m1.shape() == Shape{});
     }
 
     SECTION("Float initializer") {
@@ -460,6 +460,22 @@ TEST_CASE("NdArray") {
         RequireNdArray(m_n,
                        "[[-0, -1, -2],\n"
                        " [-3, -4, -5]]");
+    }
+
+    SECTION("Dot") {
+        auto m1 = NdArray::Arange(3);
+        auto m2 = NdArray::Arange(4);
+        auto m3 = NdArray::Arange(6).reshape(2, 3);
+        auto m4 = NdArray::Arange(6).reshape(3, 2);
+        auto m5 = NdArray::Arange(12).reshape(2, 3, 2);
+        auto m6 = NdArray::Arange(12).reshape(2, 6);
+        float m11 = m1.dot(m1);  // inner product of vectors
+        auto m23 = m3.dot(m4);
+        auto m56 = m5.dot(m6);
+        std::cout << m23 << std::endl;
+        std::cout << m56 << std::endl;
+        REQUIRE(m11 == Approx(5.f));
+        REQUIRE_THROWS(m1.dot(m2));
     }
 }
 

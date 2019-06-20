@@ -119,6 +119,8 @@ public:
     template <typename... I>
     NdArray slice(std::initializer_list<I>... slice_index) const;  // {i, j}...
 
+    NdArray dot(const NdArray& other) const;
+
     class Substance;
 
 private:
@@ -516,22 +518,6 @@ static NdArray ApplyBroadcastOp(const float& lhs, const NdArray& rhs, F op) {
     return ret;
 }
 
-static float AddOp(const float& lhs, const float& rhs) {
-    return lhs + rhs;
-}
-
-static float SubOp(const float& lhs, const float& rhs) {
-    return lhs - rhs;
-}
-
-static float MulOp(const float& lhs, const float& rhs) {
-    return lhs * rhs;
-}
-
-static float DivOp(const float& lhs, const float& rhs) {
-    return lhs / rhs;
-}
-
 static void OutputArrayLine(std::ostream& os, const float*& data, size_t size) {
     os << "[";  // Begin of a line
     for (size_t i = 0; i < size; i++) {
@@ -570,6 +556,76 @@ static void OutputArrayMultiDim(std::ostream& os, const float*& data,
             os << "," << std::endl;  // Splitter of array
         }
     }
+}
+
+static NdArray DotNdArray1D(const NdArray& lhs, const NdArray& rhs) {
+    if (lhs.size() != rhs.size()) {
+        throw std::runtime_error("Invalid size for inner product of 1D");
+    }
+    // Inner product of vectors
+    const float* l_data = lhs.data();
+    const float* r_data = rhs.data();
+    float sum = 0.f;
+    for (size_t i = 0; i < lhs.size(); i++) {
+        sum += l_data[i] * r_data[i];
+    }
+    return {sum};
+}
+
+static NdArray DotNdArrayND1D(const NdArray& lhs, const NdArray& rhs) {
+    // Broadcast right 1D array
+    throw std::runtime_error("Not implemented");
+}
+
+static NdArray DotNdArrayNDMD(const NdArray& lhs, const NdArray& rhs) {
+    const Shape& l_shape = lhs.shape();  // 1 <= size
+    const Shape& r_shape = rhs.shape();  // 2 <= size
+
+    // The last axis of left and the second-to-last axis of right must be same.
+    if (l_shape[l_shape.size() - 1] != r_shape[r_shape.size() - 2]) {
+        throw std::runtime_error("Invalid shape for dot product");
+    }
+
+    // Result shape
+    Shape ret_shape(l_shape.begin(), l_shape.end() - 1);
+    ret_shape.insert(ret_shape.end(), r_shape.begin(), r_shape.end() - 2);
+    ret_shape.push_back(r_shape.back());
+
+    // Result array
+    NdArray ret(ret_shape);
+
+    // Compute child sizes of contracting dimension
+    //   [2, 3, (4)] [5, 6, (4), 7] -> [2, 3, 5, 6, 7]
+    const int ret_child_size_2 = std::accumulate(
+            ret_shape.begin() + static_cast<long>(l_shape.size()) - 1,
+            ret_shape.end(), 1, std::multiplies<int>()); // [(5), (6), 4, (7)]
+    const int ret_child_size_1 = ret_shape.back();       // [5, 6, 4, (7)]
+    const int l_child_size = l_shape.back();             // [2, 3, (4)]
+    const int r_child_size_2 =
+            r_shape.end()[-1] * r_shape.end()[-2];  // [5, 6, (4), (7)]
+    const int r_child_size_1 = ret_child_size_1;    // [2, 3, (4)]
+
+    // Basic matrix product
+    const int n_ret = static_cast<int>(ret.size());
+    const int n_contract = l_child_size;
+    float* ret_data = ret.data();
+    const float* l_data = lhs.data();
+    const float* r_data = rhs.data();
+    for (int ret_idx = 0; ret_idx < n_ret; ret_idx++) {
+        // Compute left/right index from `ret_idx`
+        const int l_idx = (ret_idx / ret_child_size_2) * l_child_size;
+        const int r_idx_2 = (ret_idx % ret_child_size_2) / ret_child_size_1;
+        const int r_idx_1 = ret_idx % ret_child_size_1;
+        const int r_idx = (r_idx_2 * r_child_size_2) + r_idx_1;
+        // Sum up
+        float sum = 0.f;
+        for (int i = 0; i < n_contract; i++) {
+            sum += l_data[l_idx + i] * r_data[r_idx + (i * r_child_size_1)];
+        }
+        // Register
+        ret_data[ret_idx] = sum;
+    }
+    return ret;
 }
 
 // -------------------------- Utilities for Variable ---------------------------
@@ -641,7 +697,7 @@ public:
           shape(shape_),
           v(new float[size_], std::default_delete<float[]>()) {}
     size_t size = 0;
-    Shape shape = {0};
+    Shape shape = {};
     std::shared_ptr<float> v;  // C++17: Replace with `shared_ptr<float[]>`.
 };
 
@@ -958,6 +1014,33 @@ NdArray NdArray::slice(std::initializer_list<I>... slice_index) const {
     return slice(SliceIndex{CvtToSliceIndexItem(slice_index)...});
 }
 
+// --------------------------------- Dot Method --------------------------------
+NdArray NdArray::dot(const NdArray& other) const {
+    const NdArray& lhs = *this;
+    const NdArray& rhs = other;
+    const Shape& l_shape = lhs.shape();
+    const Shape& r_shape = rhs.shape();
+    if (l_shape.size() == 0 || r_shape.size() == 0) {
+        // Empty array
+        throw std::runtime_error("Dot product of empty array");
+    } else if (lhs.size() == 1) {
+        // Simple multiply
+        return static_cast<float>(lhs) * rhs;
+    } else if (rhs.size() == 1) {
+        // Simple multiply
+        return lhs * static_cast<float>(rhs);
+    } else if (l_shape.size() == 1 && r_shape.size() == 1) {
+        // Inner product of vector
+        return DotNdArray1D(lhs, rhs);
+    } else if (r_shape.size() == 1) {
+        // Broadcast right 1D array
+        return DotNdArrayND1D(lhs, rhs);
+    } else {
+        // Basic matrix product
+        return DotNdArrayNDMD(lhs, rhs);
+    }
+}
+
 // ---------------------- Template Method Specializations ----------------------
 // Assuming up to 10 dimensions.
 // For `Empty(S... shape)`
@@ -1089,51 +1172,51 @@ std::ostream& operator<<(std::ostream& os, const Shape& shape) {
 }
 
 NdArray operator+(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, AddOp);
+    return ApplyBroadcastOp(lhs, rhs, std::plus<float>());
 }
 
 NdArray operator-(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, SubOp);
+    return ApplyBroadcastOp(lhs, rhs, std::minus<float>());
 }
 
 NdArray operator*(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, MulOp);
+    return ApplyBroadcastOp(lhs, rhs, std::multiplies<float>());
 }
 
 NdArray operator/(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, DivOp);
+    return ApplyBroadcastOp(lhs, rhs, std::divides<float>());
 }
 
 NdArray operator+(const NdArray& lhs, const float& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, AddOp);
+    return ApplyBroadcastOp(lhs, rhs, std::plus<float>());
 }
 
 NdArray operator-(const NdArray& lhs, const float& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, SubOp);
+    return ApplyBroadcastOp(lhs, rhs, std::minus<float>());
 }
 
 NdArray operator*(const NdArray& lhs, const float& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, MulOp);
+    return ApplyBroadcastOp(lhs, rhs, std::multiplies<float>());
 }
 
 NdArray operator/(const NdArray& lhs, const float& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, DivOp);
+    return ApplyBroadcastOp(lhs, rhs, std::divides<float>());
 }
 
 NdArray operator+(const float& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, AddOp);
+    return ApplyBroadcastOp(lhs, rhs, std::plus<float>());
 }
 
 NdArray operator-(const float& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, SubOp);
+    return ApplyBroadcastOp(lhs, rhs, std::minus<float>());
 }
 
 NdArray operator*(const float& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, MulOp);
+    return ApplyBroadcastOp(lhs, rhs, std::multiplies<float>());
 }
 
 NdArray operator/(const float& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, DivOp);
+    return ApplyBroadcastOp(lhs, rhs, std::divides<float>());
 }
 
 NdArray operator+(const NdArray& x) {
