@@ -307,7 +307,7 @@ NdArray CreateRandomArray(const Shape& shape, D&& dist, R&& rand_engine) {
     return ret;
 }
 
-std::vector<int> ComputeChildSizes(const Shape& shape) {
+static std::vector<int> ComputeChildSizes(const Shape& shape) {
     const size_t n_shape = shape.size();
     if (n_shape == 0) {
         return {};
@@ -447,7 +447,7 @@ static void ApplyBroadcastOpImplFast(float* ret_data, const float* l_data,
     }
 }
 
-Shape PadShape(const Shape& shape, size_t size) {
+static Shape PadShape(const Shape& shape, size_t size) {
     if (size < shape.size()) {
         throw std::runtime_error("Invalid shape to pad");
     }
@@ -572,9 +572,33 @@ static NdArray DotNdArray1D(const NdArray& lhs, const NdArray& rhs) {
     return {sum};
 }
 
-static NdArray DotNdArrayND1D(const NdArray& lhs, const NdArray& rhs) {
-    // Broadcast right 1D array
-    throw std::runtime_error("Not implemented");
+static NdArray DotNdArray2D(const NdArray& lhs, const NdArray& rhs) {
+    const Shape& l_shape = lhs.shape();  // 2 == size
+    const Shape& r_shape = rhs.shape();  // 2 == size
+    if (l_shape[1] != r_shape[0]) {
+        throw std::runtime_error("Invalid size for inner product of 2D");
+    }
+    // Inner product of 2D matrix
+    const int n_row = l_shape[0];
+    const int n_col = r_shape[1];
+    const int n_contract = l_shape[1];
+    const int& n_l_col = n_contract;
+    const int& n_r_col = n_col;
+    NdArray ret({n_row, n_col});
+    float* ret_data = ret.data();
+    const float* l_data = lhs.data();
+    const float* r_data = rhs.data();
+    for (int row_idx = 0; row_idx < n_row; row_idx++) {
+        for (int col_idx = 0; col_idx < n_col; col_idx++) {
+            float sum = 0.f;
+            for (int i = 0; i < n_contract; i++) {
+                sum += l_data[row_idx * n_l_col + i] *
+                       r_data[i * n_r_col + col_idx];
+            }
+            *(ret_data++) = sum;
+        }
+    }
+    return ret;
 }
 
 static NdArray DotNdArrayNDMD(const NdArray& lhs, const NdArray& rhs) {
@@ -591,21 +615,19 @@ static NdArray DotNdArrayNDMD(const NdArray& lhs, const NdArray& rhs) {
     ret_shape.insert(ret_shape.end(), r_shape.begin(), r_shape.end() - 2);
     ret_shape.push_back(r_shape.back());
 
-    // Result array
-    NdArray ret(ret_shape);
-
-    // Compute child sizes of contracting dimension
+    // Compute child sizes
     //   [2, 3, (4)] [5, 6, (4), 7] -> [2, 3, 5, 6, 7]
     const int ret_child_size_2 = std::accumulate(
             ret_shape.begin() + static_cast<long>(l_shape.size()) - 1,
-            ret_shape.end(), 1, std::multiplies<int>()); // [(5), (6), 4, (7)]
-    const int ret_child_size_1 = ret_shape.back();       // [5, 6, 4, (7)]
-    const int l_child_size = l_shape.back();             // [2, 3, (4)]
+            ret_shape.end(), 1, std::multiplies<int>());  // [(5), (6), 4, (7)]
+    const int ret_child_size_1 = ret_shape.back();        // [5, 6, 4, (7)]
+    const int l_child_size = l_shape.back();              // [2, 3, (4)]
     const int r_child_size_2 =
             r_shape.end()[-1] * r_shape.end()[-2];  // [5, 6, (4), (7)]
     const int r_child_size_1 = ret_child_size_1;    // [2, 3, (4)]
 
     // Basic matrix product
+    NdArray ret(ret_shape);
     const int n_ret = static_cast<int>(ret.size());
     const int n_contract = l_child_size;
     float* ret_data = ret.data();
@@ -697,7 +719,7 @@ public:
           shape(shape_),
           v(new float[size_], std::default_delete<float[]>()) {}
     size_t size = 0;
-    Shape shape = {};
+    Shape shape = {0};
     std::shared_ptr<float> v;  // C++17: Replace with `shared_ptr<float[]>`.
 };
 
@@ -1020,21 +1042,31 @@ NdArray NdArray::dot(const NdArray& other) const {
     const NdArray& rhs = other;
     const Shape& l_shape = lhs.shape();
     const Shape& r_shape = rhs.shape();
-    if (l_shape.size() == 0 || r_shape.size() == 0) {
+    if (lhs.size() == 0 || rhs.size() == 0) {
         // Empty array
         throw std::runtime_error("Dot product of empty array");
     } else if (lhs.size() == 1) {
-        // Simple multiply
+        // Simple multiply (left)
         return static_cast<float>(lhs) * rhs;
     } else if (rhs.size() == 1) {
-        // Simple multiply
+        // Simple multiply (right)
         return lhs * static_cast<float>(rhs);
     } else if (l_shape.size() == 1 && r_shape.size() == 1) {
-        // Inner product of vector
+        // Inner product of vector (1D, 1D)
         return DotNdArray1D(lhs, rhs);
+    } else if (l_shape.size() == 2 && r_shape.size() == 2) {
+        // Inner product of 2D matrix (2D, 2D)
+        // Special version of NDMD. This is for faster calculation.
+        return DotNdArray2D(lhs, rhs);
+    } else if (l_shape.size() == 2 && r_shape.size() == 1) {
+        // Inner product of 2D matrix and vector (2D, 1D)
+        // Special version of ND1D. This is for faster calculation.
+        const int n_elem = l_shape[0];
+        return DotNdArray2D(lhs, rhs.reshape(r_shape[0], 1)).reshape(n_elem);
     } else if (r_shape.size() == 1) {
         // Broadcast right 1D array
-        return DotNdArrayND1D(lhs, rhs);
+        const Shape shape(l_shape.begin(), l_shape.end() - 1);
+        return DotNdArrayNDMD(lhs, rhs.reshape(r_shape[0], 1)).reshape(shape);
     } else {
         // Basic matrix product
         return DotNdArrayNDMD(lhs, rhs);

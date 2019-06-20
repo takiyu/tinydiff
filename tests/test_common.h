@@ -29,7 +29,7 @@ TEST_CASE("NdArray") {
         const NdArray m1;
         REQUIRE(m1.empty());
         REQUIRE(m1.size() == 0);
-        REQUIRE(m1.shape() == Shape{});
+        REQUIRE(m1.shape() == Shape{0});
     }
 
     SECTION("Float initializer") {
@@ -462,20 +462,106 @@ TEST_CASE("NdArray") {
                        " [-3, -4, -5]]");
     }
 
-    SECTION("Dot") {
+    SECTION("Dot (empty)") {
+        // Empty array
+        auto m1 = NdArray::Arange(0);
+        REQUIRE_THROWS(m1.dot(m1));
+    }
+
+    SECTION("Dot (scalar)") {
+        // Scalar multiply
+        auto m1 = NdArray::Arange(6).reshape(2, 3);
+        auto m1_a = m1 * 2.f;
+        auto m1_b = 2.f * m1;
+        RequireNdArray(m1_a,
+                       "[[0, 2, 4],\n"
+                       " [6, 8, 10]]");
+        RequireNdArray(m1_b,
+                       "[[0, 2, 4],\n"
+                       " [6, 8, 10]]");
+    }
+
+    SECTION("Dot (1D, 1D)") {
+        // Inner product of vectors
         auto m1 = NdArray::Arange(3);
-        auto m2 = NdArray::Arange(4);
-        auto m3 = NdArray::Arange(6).reshape(2, 3);
-        auto m4 = NdArray::Arange(6).reshape(3, 2);
-        auto m5 = NdArray::Arange(12).reshape(2, 3, 2);
-        auto m6 = NdArray::Arange(12).reshape(2, 6);
-        float m11 = m1.dot(m1);  // inner product of vectors
-        auto m23 = m3.dot(m4);
-        auto m56 = m5.dot(m6);
-        std::cout << m23 << std::endl;
-        std::cout << m56 << std::endl;
+        auto m2 = NdArray::Ones(3);
+        float m11 = m1.dot(m1);
+        float m12 = m1.dot(m2);
         REQUIRE(m11 == Approx(5.f));
-        REQUIRE_THROWS(m1.dot(m2));
+        REQUIRE(m12 == Approx(3.f));
+        // Shape mismatch
+        auto m3 = NdArray::Arange(4);
+        REQUIRE_THROWS(m1.dot(m3));
+    }
+
+    SECTION("Dot (2D, 2D)") {
+        // Inner product of 2D matrix
+        auto m1 = NdArray::Arange(6).reshape(2, 3);
+        auto m2 = NdArray::Arange(6).reshape(3, 2);
+        auto m12 = m1.dot(m2);
+        RequireNdArray(m12,
+                       "[[10, 13],\n"
+                       " [28, 40]]");
+        // Shape mismatch
+        REQUIRE_THROWS(m1.dot(m1));
+    }
+
+    SECTION("Dot (2D, 1D)") {
+        // Inner product of 2D matrix and vector (2D, 1D)
+        auto m1 = NdArray::Arange(6).reshape(2, 3);
+        auto m2 = NdArray::Arange(3);
+        auto m12 = m1.dot(m2);
+        RequireNdArray(m12, "[5, 14]");
+        // Shape mismatch
+        auto m3 = NdArray::Arange(2);
+        REQUIRE_THROWS(m1.dot(m3));
+    }
+
+    SECTION("Dot (ND, 1D)") {
+        // Inner product of ND matrix and vector (ND, 1D)
+        auto m1 = NdArray::Arange(12).reshape(2, 2, 3);
+        auto m2 = NdArray::Arange(3);
+        auto m12 = m1.dot(m2);
+        RequireNdArray(m12,
+                       "[[5, 14],\n"
+                       " [23, 32]]");
+    }
+
+    SECTION("Dot (ND, MD)") {
+        // Inner product of ND matrix and MD matrix
+        auto m1 = NdArray::Arange(12).reshape(2, 3, 2);
+        auto m2 = NdArray::Arange(6).reshape(2, 3);
+        auto m3 = NdArray::Arange(12).reshape(3, 2, 2);
+        auto m12 = m1.dot(m2);
+        auto m13 = m1.dot(m3);
+        REQUIRE(m12.shape() == Shape{2, 3, 3});
+        REQUIRE(m13.shape() == Shape{2, 3, 3, 2});
+        RequireNdArray(m12,
+                       "[[[3, 4, 5],\n"
+                       "  [9, 14, 19],\n"
+                       "  [15, 24, 33]],\n"
+                       " [[21, 34, 47],\n"
+                       "  [27, 44, 61],\n"
+                       "  [33, 54, 75]]]");
+        RequireNdArray(m13,
+                       "[[[[2, 3],\n"
+                       "   [6, 7],\n"
+                       "   [10, 11]],\n"
+                       "  [[6, 11],\n"
+                       "   [26, 31],\n"
+                       "   [46, 51]],\n"
+                       "  [[10, 19],\n"
+                       "   [46, 55],\n"
+                       "   [82, 91]]],\n"
+                       " [[[14, 27],\n"
+                       "   [66, 79],\n"
+                       "   [118, 131]],\n"
+                       "  [[18, 35],\n"
+                       "   [86, 103],\n"
+                       "   [154, 171]],\n"
+                       "  [[22, 43],\n"
+                       "   [106, 127],\n"
+                       "   [190, 211]]]]");
     }
 }
 
