@@ -370,12 +370,10 @@ static std::pair<int, int> CvtToSliceIndexItem(std::initializer_list<int> l) {
     return {*l.begin(), *(l.begin() + 1)};
 }
 
-static Shape CheckBroadcastable(const NdArray& lhs, const NdArray& rhs) {
+static Shape CheckBroadcastable(const Shape& l_shape, const Shape& r_shape) {
     // We assuming left array has deeper shape than right one.
-    const Shape& l_shape = lhs.shape();
-    const Shape& r_shape = rhs.shape();
     if (l_shape.size() < r_shape.size()) {
-        return CheckBroadcastable(rhs, lhs);  // Swap
+        return CheckBroadcastable(r_shape, l_shape);  // Swap
     }
     // `l_shape.size()` is maximum depth.
 
@@ -405,49 +403,6 @@ static Shape CheckBroadcastable(const NdArray& lhs, const NdArray& rhs) {
     return shape;
 }
 
-template <typename F>
-static void ApplyBroadcastOpImpl(float* ret_data, const float* l_data,
-                                 const float* r_data, const Shape& ret_shape,
-                                 const Shape& l_shape, const Shape& r_shape,
-                                 const std::vector<int>& ret_child_sizes,
-                                 const std::vector<int>& l_child_sizes,
-                                 const std::vector<int>& r_child_sizes,
-                                 size_t depth, F op) {
-    if (depth < ret_shape.size()) {
-        // Fetch shapes
-        const int l_s = l_shape[depth];
-        const int r_s = r_shape[depth];
-        // Decide pointer steps by broadcast patterns.
-        const int ret_step = ret_child_sizes[depth];
-        const int l_step = (l_s == r_s || r_s == 1) ? l_child_sizes[depth] : 0;
-        const int r_step = (l_s == r_s || l_s == 1) ? r_child_sizes[depth] : 0;
-        // Applying loop
-        const int n_loop = std::max(l_s, r_s);
-        for (int i = 0; i < n_loop; i++) {
-            // Apply recursively
-            ApplyBroadcastOpImpl(ret_data, l_data, r_data, ret_shape, l_shape,
-                                 r_shape, ret_child_sizes, l_child_sizes,
-                                 r_child_sizes, depth + 1, op);
-            // Next pointer
-            ret_data += ret_step;
-            l_data += l_step;
-            r_data += r_step;
-        }
-    } else {
-        // Apply operator
-        *ret_data = op(*l_data, *r_data);
-    }
-}
-
-template <typename F>
-static void ApplyBroadcastOpImplFast(float* ret_data, const float* l_data,
-                                     const float* r_data, size_t size, F op) {
-    // Simply apply all
-    for (size_t i = 0; i < size; i++) {
-        *(ret_data++) = op(*(l_data++), *(r_data++));
-    }
-}
-
 static Shape PadShape(const Shape& shape, size_t size) {
     if (size < shape.size()) {
         throw std::runtime_error("Invalid shape to pad");
@@ -460,41 +415,90 @@ static Shape PadShape(const Shape& shape, size_t size) {
     return ret_shape;
 }
 
+
 template <typename F>
-static NdArray ApplyBroadcastOp(const NdArray& lhs, const NdArray& rhs, F op) {
-    const Shape& l_shape = lhs.shape();
-    const Shape& r_shape = rhs.shape();
-    if (l_shape == r_shape) {
-        // Apply without broadcast because of same size for speed up.
-        NdArray ret(l_shape);
-        ApplyBroadcastOpImplFast(ret.data(), lhs.data(), rhs.data(), ret.size(),
-                                 op);
-        return ret;
+static void ApplyOpBroadcastImpl(float* ret_data, const float* l_data,
+                                 const float* r_data, const Shape& ret_shape,
+                                 const Shape& l_shape, const Shape& r_shape,
+                                 const std::vector<int>& ret_child_sizes,
+                                 const std::vector<int>& l_child_sizes,
+                                 const std::vector<int>& r_child_sizes,
+                                 size_t depth, size_t const depth_offset, F op) {
+    if (depth < ret_shape.size() - depth_offset) {
+        // Fetch shapes
+        const int l_s = l_shape[depth];
+        const int r_s = r_shape[depth];
+        // Decide pointer steps by broadcast patterns.
+        const int ret_step = ret_child_sizes[depth];
+        const int l_step = (l_s == r_s || r_s == 1) ? l_child_sizes[depth] : 0;
+        const int r_step = (l_s == r_s || l_s == 1) ? r_child_sizes[depth] : 0;
+        // Applying loop
+        const int n_loop = std::max(l_s, r_s);
+        for (int i = 0; i < n_loop; i++) {
+            // Apply recursively
+            ApplyOpBroadcastImpl(ret_data, l_data, r_data,
+                                               ret_shape, l_shape, r_shape,
+                                               ret_child_sizes, l_child_sizes,
+                                               r_child_sizes, depth + 1, depth_offset, op);
+            // Next pointer
+            ret_data += ret_step;
+            l_data += l_step;
+            r_data += r_step;
+        }
     } else {
-        // Check it is possible to broadcast
-        const Shape& ret_shape = CheckBroadcastable(lhs, rhs);
-
-        // Pre-compute padded shape
-        const Shape& l_shape_pad = PadShape(l_shape, ret_shape.size());
-        const Shape& r_shape_pad = PadShape(r_shape, ret_shape.size());
-
-        // Pre-compute child sizes
-        const std::vector<int>& ret_child_sizes = ComputeChildSizes(ret_shape);
-        const std::vector<int>& l_child_sizes = ComputeChildSizes(l_shape_pad);
-        const std::vector<int>& r_child_sizes = ComputeChildSizes(r_shape_pad);
-
-        // Apply with broadcast
-        NdArray ret(ret_shape);
-        ApplyBroadcastOpImpl(ret.data(), lhs.data(), rhs.data(), ret_shape,
-                             l_shape_pad, r_shape_pad, ret_child_sizes,
-                             l_child_sizes, r_child_sizes, 0, op);
-
-        return ret;
+        // Apply operator
+        op(ret_data, l_data, r_data);
     }
 }
 
 template <typename F>
-static NdArray ApplyBroadcastOp(const NdArray& lhs, const float& rhs, F op) {
+static NdArray ApplyOpBroadcast(const NdArray& lhs, const NdArray& rhs, const Shape& ret_shape, const size_t depth_offset, F op) {
+
+    // Pre-compute padded shape
+    const Shape& l_shape_pad = PadShape(lhs.shape(), ret_shape.size());
+    const Shape& r_shape_pad = PadShape(rhs.shape(), ret_shape.size());
+
+    // Pre-compute child sizes
+    const std::vector<int>& ret_child_sizes = ComputeChildSizes(ret_shape);
+    const std::vector<int>& l_child_sizes = ComputeChildSizes(l_shape_pad);
+    const std::vector<int>& r_child_sizes = ComputeChildSizes(r_shape_pad);
+
+    // Apply with broadcast
+    NdArray ret(ret_shape);
+    ApplyOpBroadcastImpl(ret.data(), lhs.data(), rhs.data(),
+                                       ret_shape, l_shape_pad, r_shape_pad,
+                                       ret_child_sizes, l_child_sizes,
+                                       r_child_sizes, 0, depth_offset, op);
+    return ret;
+}
+
+template <typename F>
+static NdArray ApplyElemWiseOp(const NdArray& lhs, const NdArray& rhs, F op) {
+    if (lhs.shape() == rhs.shape()) {
+        // Apply without broadcast because of same size for speed up.
+        NdArray ret(lhs.shape());
+        float* ret_data = ret.data();
+        const float* l_data = lhs.data();
+        const float* r_data = rhs.data();
+        // Simply apply all
+        for (size_t i = 0; i < ret.size(); i++) {
+            *(ret_data++) = op(*(l_data++), *(r_data++));
+        }
+        return ret;
+    } else {
+    // Check it is possible to broadcast
+        const Shape& ret_shape = CheckBroadcastable(lhs.shape(), rhs.shape());
+        // Wrap operator `float(float, float)` for pointer.
+        auto wrapped_op = [&](float* o, const float* l, const float* r) {
+                            *o = op(*l, *r);
+                          };
+        // Apply broadcast
+        return ApplyOpBroadcast(lhs, rhs, ret_shape, 0, wrapped_op);
+    }
+}
+
+template <typename F>
+static NdArray ApplyElemWiseOp(const NdArray& lhs, const float& rhs, F op) {
     // Broadcast right float
     NdArray ret(lhs.shape());
     const float* l_data = lhs.data();
@@ -507,7 +511,7 @@ static NdArray ApplyBroadcastOp(const NdArray& lhs, const float& rhs, F op) {
 }
 
 template <typename F>
-static NdArray ApplyBroadcastOp(const float& lhs, const NdArray& rhs, F op) {
+static NdArray ApplyElemWiseOp(const float& lhs, const NdArray& rhs, F op) {
     // Broadcast left float
     NdArray ret(rhs.shape());
     const float* r_data = rhs.data();
@@ -651,38 +655,46 @@ static NdArray DotNdArrayNdMd(const NdArray& lhs, const NdArray& rhs) {
     return ret;
 }
 
-static NdArray CrossNdArray1d1dShape33(const NdArray& lhs, const NdArray& rhs) {
+static void CrossNdArray1d1dShape33(float* ret_data, const float* l_data,
+                                    const float* r_data) {
     // lhs.shape() == {3} && rhs.shape == {3}
-    const float *l_data = lhs.data();
-    const float *r_data = rhs.data();
-    return {l_data[1] * r_data[2] - l_data[2] * r_data[1],
-            l_data[2] * r_data[0] - l_data[0] * r_data[2],
-            l_data[0] * r_data[1] - l_data[1] * r_data[0]};
+    *(ret_data++) = l_data[1] * r_data[2] - l_data[2] * r_data[1];
+    *(ret_data++) = l_data[2] * r_data[0] - l_data[0] * r_data[2];
+    *(ret_data++) = l_data[0] * r_data[1] - l_data[1] * r_data[0];
 }
 
-static NdArray CrossNdArray1d1dShape32(const NdArray& lhs, const NdArray& rhs) {
+static void CrossNdArray1d1dShape32(float* ret_data, const float* l_data,
+                                    const float* r_data) {
     // lhs.shape() == {3} && rhs.shape == {2}
-    const float *l_data = lhs.data();
-    const float *r_data = rhs.data();
-    return {-l_data[2] * r_data[1],
-            l_data[2] * r_data[0],
-            l_data[0] * r_data[1] - l_data[1] * r_data[0]};
+    *(ret_data++) = -l_data[2] * r_data[1];
+    *(ret_data++) = l_data[2] * r_data[0];
+    *ret_data = l_data[0] * r_data[1] - l_data[1] * r_data[0];
 }
 
-static NdArray CrossNdArray1d1dShape23(const NdArray& lhs, const NdArray& rhs) {
+static void CrossNdArray1d1dShape23(float* ret_data, const float* l_data,
+                                    const float* r_data) {
     // lhs.shape() == {3} && rhs.shape == {3}
-    const float *l_data = lhs.data();
-    const float *r_data = rhs.data();
-    return {l_data[1] * r_data[2],
-            -l_data[0] * r_data[2],
-            l_data[0] * r_data[1] - l_data[1] * r_data[0]};
+    *(ret_data++) = l_data[1] * r_data[2];
+    *(ret_data++) = -l_data[0] * r_data[2];
+    *ret_data = l_data[0] * r_data[1] - l_data[1] * r_data[0];
 }
 
-static NdArray CrossNdArray1d1dShape22(const NdArray& lhs, const NdArray& rhs) {
+static void CrossNdArray1d1dShape22(float* ret_data, const float* l_data,
+                                    const float* r_data) {
     // lhs.shape() == {2} && rhs.shape == {2}
-    const float *l_data = lhs.data();
-    const float *r_data = rhs.data();
-    return {l_data[0] * r_data[1] - l_data[1] * r_data[0]};
+    *ret_data = l_data[0] * r_data[1] - l_data[1] * r_data[0];
+}
+
+template <typename F>
+static NdArray CrossNdArrayNdMd(const NdArray& lhs, const NdArray& rhs,
+                                size_t last_size, F op) {
+    const Shape& l_shape = lhs.shape();
+    const Shape& r_shape = rhs.shape();
+    Shape ret_shape = CheckBroadcastable({l_shape.begin(), l_shape.end() - 1},
+                                         {r_shape.begin(), r_shape.end() - 1});
+    ret_shape.push_back(last_size);
+    // Apply broadcast
+    return ApplyOpBroadcast(lhs, rhs, ret_shape, 1, op);
 }
 
 // -------------------------- Utilities for Variable ---------------------------
@@ -1112,28 +1124,50 @@ NdArray NdArray::dot(const NdArray& other) const {
 NdArray NdArray::cross(const NdArray& other) const {
     const NdArray& lhs = *this;
     const NdArray& rhs = other;
+    if (lhs.size() == 0 || rhs.size() == 0) {
+        // Empty array
+        throw std::runtime_error("Cross product of empty array");
+    }
     const Shape& l_shape = lhs.shape();
     const Shape& r_shape = rhs.shape();
     const int l_back = l_shape.back();
     const int r_back = r_shape.back();
     if (l_shape.size() == 1 && r_shape.size() == 1) {
         // 1D cross
-        if (l_back == 3 && r_back == 3) {
-            return CrossNdArray1d1dShape33(lhs, rhs);
-        } else if (l_back == 3 && r_back == 2) {
-            return CrossNdArray1d1dShape32(lhs, rhs);
-        } else if (l_back == 2 && r_back == 3) {
-            return CrossNdArray1d1dShape23(lhs, rhs);
-        } else if (l_back == 2 && r_back == 2) {
-            return CrossNdArray1d1dShape22(lhs, rhs);
-        } else {
-            throw std::runtime_error("incompatible dimensions for cross product"
-                                     " (dimension must be 2 or 3)");
+        if (l_back == 3 && r_back == 3) {  // [3].cross([3]) -> [3]
+            NdArray ret({3});
+            CrossNdArray1d1dShape33(ret.data(), lhs.data(), rhs.data());
+            return ret;
+        } else if (l_back == 3 && r_back == 2) {  // [3].cross([2]) -> [3]
+            NdArray ret({3});
+            CrossNdArray1d1dShape32(ret.data(), lhs.data(), rhs.data());
+            return ret;
+        } else if (l_back == 2 && r_back == 3) {  // [2].cross([3]) -> [3]
+            NdArray ret({3});
+            CrossNdArray1d1dShape23(ret.data(), lhs.data(), rhs.data());
+            return ret;
+        } else if (l_back == 2 && r_back == 2) {  // [2].cross([2]) -> [1]
+            NdArray ret({1});
+            CrossNdArray1d1dShape22(ret.data(), lhs.data(), rhs.data());
+            return ret;
         }
     } else {
         // ND cross
-        throw std::runtime_error("Not implemented");
+        if (l_back == 3 && r_back == 3) {  // [3].cross([3]) -> [3]
+            return CrossNdArrayNdMd(lhs, rhs, 3, CrossNdArray1d1dShape33);
+        } else if (l_back == 3 && r_back == 2) {  // [2].cross([3]) -> [3]
+            return CrossNdArrayNdMd(lhs, rhs, 3, CrossNdArray1d1dShape32);
+        } else if (l_back == 2 && r_back == 3) {  // [3].cross([2]) -> [3]
+            return CrossNdArrayNdMd(lhs, rhs, 3, CrossNdArray1d1dShape23);
+        } else if (l_back == 2 && r_back == 2) {  // [2].cross([2]) -> [1]
+            auto&& ret = CrossNdArrayNdMd(lhs, rhs, 1, CrossNdArray1d1dShape22);
+            const Shape& ret_shape = ret.shape();  // Remove last dim
+            return ret.reshape(Shape{ret_shape.begin(), ret_shape.end() - 1});
+        }
     }
+    throw std::runtime_error(
+            "incompatible dimensions for cross product"
+            " (dimension must be 2 or 3)");
 }
 
 // ---------------------- Template Method Specializations ----------------------
@@ -1267,51 +1301,51 @@ std::ostream& operator<<(std::ostream& os, const Shape& shape) {
 }
 
 NdArray operator+(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, std::plus<float>());
+    return ApplyElemWiseOp(lhs, rhs, std::plus<float>());
 }
 
 NdArray operator-(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, std::minus<float>());
+    return ApplyElemWiseOp(lhs, rhs, std::minus<float>());
 }
 
 NdArray operator*(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, std::multiplies<float>());
+    return ApplyElemWiseOp(lhs, rhs, std::multiplies<float>());
 }
 
 NdArray operator/(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, std::divides<float>());
+    return ApplyElemWiseOp(lhs, rhs, std::divides<float>());
 }
 
 NdArray operator+(const NdArray& lhs, const float& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, std::plus<float>());
+    return ApplyElemWiseOp(lhs, rhs, std::plus<float>());
 }
 
 NdArray operator-(const NdArray& lhs, const float& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, std::minus<float>());
+    return ApplyElemWiseOp(lhs, rhs, std::minus<float>());
 }
 
 NdArray operator*(const NdArray& lhs, const float& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, std::multiplies<float>());
+    return ApplyElemWiseOp(lhs, rhs, std::multiplies<float>());
 }
 
 NdArray operator/(const NdArray& lhs, const float& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, std::divides<float>());
+    return ApplyElemWiseOp(lhs, rhs, std::divides<float>());
 }
 
 NdArray operator+(const float& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, std::plus<float>());
+    return ApplyElemWiseOp(lhs, rhs, std::plus<float>());
 }
 
 NdArray operator-(const float& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, std::minus<float>());
+    return ApplyElemWiseOp(lhs, rhs, std::minus<float>());
 }
 
 NdArray operator*(const float& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, std::multiplies<float>());
+    return ApplyElemWiseOp(lhs, rhs, std::multiplies<float>());
 }
 
 NdArray operator/(const float& lhs, const NdArray& rhs) {
-    return ApplyBroadcastOp(lhs, rhs, std::divides<float>());
+    return ApplyElemWiseOp(lhs, rhs, std::divides<float>());
 }
 
 NdArray operator+(const NdArray& x) {

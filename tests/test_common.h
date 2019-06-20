@@ -599,6 +599,55 @@ TEST_CASE("NdArray") {
         REQUIRE_THROWS(m1.cross(m2));
         REQUIRE_THROWS(m2.cross(m3));
     }
+
+    SECTION("Cross (ND, MD), (3, 3 elem)") {
+        auto m1 = NdArray::Arange(18).reshape(3, 2, 3);
+        auto m2 = NdArray::Arange(6).reshape(2, 3) + 1.f;
+        auto m12 = m1.cross(m2);
+        RequireNdArray(m12,
+                       "[[[-1, 2, -1],\n"
+                       "  [-1, 2, -1]],\n"
+                       " [[5, -10, 5],\n"
+                       "  [5, -10, 5]],\n"
+                       " [[11, -22, 11],\n"
+                       "  [11, -22, 11]]]");
+    }
+
+    SECTION("Cross (ND, MD), (3, 2 elem)") {
+        auto m1 = NdArray::Arange(18).reshape(2, 3, 3);
+        auto m2 = NdArray::Arange(6).reshape(3, 2) + 1.f;
+        auto m12 = m1.cross(m2);
+        RequireNdArray(m12,
+                       "[[[-4, 2, -1],\n"
+                       "  [-20, 15, 0],\n"
+                       "  [-48, 40, 1]],\n"
+                       " [[-22, 11, 8],\n"
+                       "  [-56, 42, 9],\n"
+                       "  [-102, 85, 10]]]");
+    }
+
+    SECTION("Cross (ND, MD), (2, 3 elem)") {
+        auto m1 = NdArray::Arange(12).reshape(3, 2, 2);
+        auto m2 = NdArray::Arange(6).reshape(2, 3) + 1.f;
+        auto m12 = m1.cross(m2);
+        RequireNdArray(m12,
+                       "[[[3, -0, -1],\n"
+                       "  [18, -12, -2]],\n"
+                       " [[15, -12, 3],\n"
+                       "  [42, -36, 2]],\n"
+                       " [[27, -24, 7],\n"
+                       "  [66, -60, 6]]]");
+    }
+
+    SECTION("Cross (ND, MD), (2, 2 elem)") {
+        auto m1 = NdArray::Arange(12).reshape(3, 2, 2);
+        auto m2 = NdArray::Arange(4).reshape(2, 2) + 1.f;
+        auto m12 = m1.cross(m2);
+        RequireNdArray(m12,
+                       "[[-1, -1],\n"
+                       " [3, 3],\n"
+                       " [7, 7]]");
+    }
 }
 
 TEST_CASE("AutoGrad") {
