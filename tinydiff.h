@@ -132,6 +132,11 @@ private:
     static std::mt19937 s_rand_engine;
 };
 
+// ---------------------------- Operator Functions -----------------------------
+NdArray Dot(const NdArray& lhs, const NdArray& rhs);
+NdArray Cross(const NdArray& lhs, const NdArray& rhs);
+NdArray Exp(const NdArray& x);
+
 // --------------------------------- Operators ---------------------------------
 std::ostream& operator<<(std::ostream& os, const NdArray& x);
 std::ostream& operator<<(std::ostream& os, const Shape& shape);
@@ -157,19 +162,20 @@ class Variable {
 public:
     Variable();
     Variable(float v);
+    Variable(const NdArray& v);
     Variable(const Variable&);
     Variable(Variable&&);
     Variable& operator=(const Variable&);
     Variable& operator=(Variable&&);
     ~Variable();
 
-    float data() const;
-    float grad() const;
+    NdArray data() const;
+    NdArray grad() const;
     void backward();
 
     void setCreator(Function f);
     Function getCreator() const;
-    void addGrad(float grad);
+    void addGrad(const NdArray& grad);
 
     class Substance;
 
@@ -200,10 +206,10 @@ public:
     // Build computational graph with forwarding
     Variables operator()(const Variables& x);
 
-    std::vector<float> forward(const std::vector<float>& x);
-    std::vector<float> backward(const std::vector<float>& x,
-                                const std::vector<float>& y,
-                                const std::vector<float>& gy);
+    std::vector<NdArray> forward(const std::vector<NdArray>& x);
+    std::vector<NdArray> backward(const std::vector<NdArray>& x,
+                                  const std::vector<NdArray>& y,
+                                  const std::vector<NdArray>& gy);
 
     Variables getInputs() const;
     Variables getOutputs() const;
@@ -712,8 +718,8 @@ V PopLast(std::map<K, V>& m) {
     return last;
 }
 
-static std::vector<float> CvtFromVariables(const Variables& src) {
-    std::vector<float> ret;
+static std::vector<NdArray> CvtFromVariables(const Variables& src) {
+    std::vector<NdArray> ret;
     ret.reserve(src.size());
     for (auto&& s_elem : src) {
         ret.emplace_back(s_elem.data());
@@ -721,7 +727,7 @@ static std::vector<float> CvtFromVariables(const Variables& src) {
     return ret;
 }
 
-static Variables CvtToVariables(const std::vector<float>& src) {
+static Variables CvtToVariables(const std::vector<NdArray>& src) {
     Variables ret;
     ret.reserve(src.size());
     for (auto&& s_elem : src) {
@@ -730,8 +736,8 @@ static Variables CvtToVariables(const std::vector<float>& src) {
     return ret;
 }
 
-static std::vector<float> GetGrads(const Variables& src) {
-    std::vector<float> ret;
+static std::vector<NdArray> GetGrads(const Variables& src) {
+    std::vector<NdArray> ret;
     ret.reserve(src.size());
     for (auto&& s_elem : src) {
         ret.emplace_back(s_elem.grad());
@@ -1268,6 +1274,25 @@ template NdArray NdArray::slice(ISII, ISII, ISII, ISII, ISII, ISII, ISII, ISII,
 template NdArray NdArray::slice(ISII, ISII, ISII, ISII, ISII, ISII, ISII, ISII,
                                 ISII, ISII, ISII) const;
 
+// ---------------------------- Operator Functions -----------------------------
+NdArray Dot(const NdArray& lhs, const NdArray& rhs) {
+    return lhs.dot(rhs);
+}
+
+NdArray Cross(const NdArray& lhs, const NdArray& rhs) {
+    return lhs.cross(rhs);
+}
+
+NdArray Exp(const NdArray& x) {
+    NdArray ret(x.shape());
+    float* ret_data = ret.data();
+    const float* x_data = x.data();
+    for (size_t i = 0; i < x.size(); i++) {
+        *(ret_data++) = std::exp(*(x_data++));
+    }
+    return ret;
+}
+
 // --------------------------------- Operators ---------------------------------
 std::ostream& operator<<(std::ostream& os, const NdArray& x) {
     const size_t size = x.size();
@@ -1370,6 +1395,8 @@ Variable::Variable(std::shared_ptr<Substance> sub) : m_sub(sub) {}
 
 Variable::Variable(float v) : m_sub(std::make_shared<Substance>(v)) {}
 
+Variable::Variable(const NdArray& v) : m_sub(std::make_shared<Substance>(v)) {}
+
 Variable::Variable(const Variable& lhs) = default;  // shallow copy
 
 Variable::Variable(Variable&&) = default;  // move
@@ -1384,25 +1411,26 @@ Variable::~Variable() = default;
 class Variable::Substance {
 public:
     Substance() {}
-    Substance(float v_) : v(v_) {}
-    float v;
-    float grad = 0.f;
+    Substance(float v_) : v({v_}) {}
+    Substance(const NdArray& v_) : v(v_) {}
+    NdArray v;
+    NdArray grad = {0.f};
     Function creator;
 };
 
 // ---------------------------------- Methods ----------------------------------
-float Variable::data() const {
+NdArray Variable::data() const {
     return m_sub->v;
 }
 
-float Variable::grad() const {
+NdArray Variable::grad() const {
     return m_sub->grad;
 }
 
 void Variable::backward() {
     // Set the last gradients 'one'
     for (auto&& output : m_sub->creator.getOutputs()) {
-        output.addGrad(1.f);
+        output.addGrad({1.f});
     }
 
     // Ordered storage to resolve
@@ -1452,8 +1480,8 @@ Function Variable::getCreator() const {
     return m_sub->creator;
 }
 
-void Variable::addGrad(float grad) {
-    m_sub->grad += grad;
+void Variable::addGrad(const NdArray& grad) {
+    m_sub->grad = m_sub->grad + grad;
 }
 
 // --------------------------------- Operators ---------------------------------
@@ -1490,13 +1518,13 @@ Function::~Function() = default;
 class Function::Substance {
 public:
     virtual ~Substance() {}
-    virtual std::vector<float> forward(const std::vector<float>& x) {
+    virtual std::vector<NdArray> forward(const std::vector<NdArray>& x) {
         (void)x;
         throw std::runtime_error("Invalid use of tinydiff::Function");
     }
-    virtual std::vector<float> backward(const std::vector<float>& x,
-                                        const std::vector<float>& y,
-                                        const std::vector<float>& gy) {
+    virtual std::vector<NdArray> backward(const std::vector<NdArray>& x,
+                                          const std::vector<NdArray>& y,
+                                          const std::vector<NdArray>& gy) {
         (void)x, (void)y, (void)gy;
         throw std::runtime_error("Invalid use of tinydiff::Function");
     }
@@ -1534,13 +1562,13 @@ Variables Function::operator()(const Variables& x) {
     return std::move(y);
 }
 
-std::vector<float> Function::forward(const std::vector<float>& x) {
+std::vector<NdArray> Function::forward(const std::vector<NdArray>& x) {
     return m_sub->forward(x);
 }
 
-std::vector<float> Function::backward(const std::vector<float>& x,
-                                      const std::vector<float>& y,
-                                      const std::vector<float>& gy) {
+std::vector<NdArray> Function::backward(const std::vector<NdArray>& x,
+                                        const std::vector<NdArray>& y,
+                                        const std::vector<NdArray>& gy) {
     return m_sub->backward(x, y, gy);
 }
 
@@ -1569,13 +1597,13 @@ namespace F {
 class AddSub : public Function::Substance {
 public:
     virtual ~AddSub() {}
-    virtual std::vector<float> forward(const std::vector<float>& x) {
+    virtual std::vector<NdArray> forward(const std::vector<NdArray>& x) {
         CheckSize(x, 2);
         return {x[0] + x[1]};
     }
-    virtual std::vector<float> backward(const std::vector<float>& x,
-                                        const std::vector<float>& y,
-                                        const std::vector<float>& gy) {
+    virtual std::vector<NdArray> backward(const std::vector<NdArray>& x,
+                                          const std::vector<NdArray>& y,
+                                          const std::vector<NdArray>& gy) {
         CheckSize(x, 2);
         CheckSize(y, 1);
         CheckSize(gy, 1);
@@ -1586,13 +1614,13 @@ public:
 class MulSub : public Function::Substance {
 public:
     virtual ~MulSub() {}
-    virtual std::vector<float> forward(const std::vector<float>& x) {
+    virtual std::vector<NdArray> forward(const std::vector<NdArray>& x) {
         CheckSize(x, 2);
         return {x[0] * x[1]};
     }
-    virtual std::vector<float> backward(const std::vector<float>& x,
-                                        const std::vector<float>& y,
-                                        const std::vector<float>& gy) {
+    virtual std::vector<NdArray> backward(const std::vector<NdArray>& x,
+                                          const std::vector<NdArray>& y,
+                                          const std::vector<NdArray>& gy) {
         CheckSize(x, 2);
         CheckSize(y, 1);
         CheckSize(gy, 1);
@@ -1603,13 +1631,13 @@ public:
 class ExpSub : public Function::Substance {
 public:
     virtual ~ExpSub() {}
-    virtual std::vector<float> forward(const std::vector<float>& x) {
+    virtual std::vector<NdArray> forward(const std::vector<NdArray>& x) {
         CheckSize(x, 1);
-        return {std::exp(x[0])};
+        return {Exp(x[0])};
     }
-    virtual std::vector<float> backward(const std::vector<float>& x,
-                                        const std::vector<float>& y,
-                                        const std::vector<float>& gy) {
+    virtual std::vector<NdArray> backward(const std::vector<NdArray>& x,
+                                          const std::vector<NdArray>& y,
+                                          const std::vector<NdArray>& gy) {
         CheckSize(x, 1);
         CheckSize(y, 1);
         CheckSize(gy, 1);
