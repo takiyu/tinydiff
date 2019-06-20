@@ -563,6 +563,42 @@ TEST_CASE("NdArray") {
                        "   [106, 127],\n"
                        "   [190, 211]]]]");
     }
+
+    SECTION("Cross (1D, 1D), (3, 3 elem)") {
+        NdArray m1 = {1.f, 2.f, 3.f};
+        NdArray m2 = {4.f, 5.f, 6.f};
+        auto m12 = m1.cross(m2);
+        RequireNdArray(m12, "[-3, 6, -3]");
+    }
+
+    SECTION("Cross (1D, 1D), (3, 2 elem)") {
+        NdArray m1 = {1.f, 2.f, 3.f};
+        NdArray m2 = {4.f, 5.f};
+        auto m12 = m1.cross(m2);
+        RequireNdArray(m12, "[-15, 12, -3]");
+    }
+
+    SECTION("Cross (1D, 1D), (2, 3 elem)") {
+        NdArray m1 = {1.f, 2.f};
+        NdArray m2 = {4.f, 5.f, 6.f};
+        auto m12 = m1.cross(m2);
+        RequireNdArray(m12, "[12, -6, -3]");
+    }
+
+    SECTION("Cross (1D, 1D), (2, 2 elem)") {
+        NdArray m1 = {1.f, 2.f};
+        NdArray m2 = {4.f, 5.f};
+        float m12 = m1.cross(m2);
+        REQUIRE(m12 == Approx(-3.f));
+    }
+
+    SECTION("Cross (1D, 1D), (mismatch)") {
+        NdArray m1 = {1.f};
+        NdArray m2 = {4.f, 5.f};
+        NdArray m3 = {4.f, 5.f, 6.f, 7.f};
+        REQUIRE_THROWS(m1.cross(m2));
+        REQUIRE_THROWS(m2.cross(m3));
+    }
 }
 
 TEST_CASE("AutoGrad") {

@@ -120,6 +120,7 @@ public:
     NdArray slice(std::initializer_list<I>... slice_index) const;  // {i, j}...
 
     NdArray dot(const NdArray& other) const;
+    NdArray cross(const NdArray& other) const;
 
     class Substance;
 
@@ -558,7 +559,7 @@ static void OutputArrayMultiDim(std::ostream& os, const float*& data,
     }
 }
 
-static NdArray DotNdArray1D(const NdArray& lhs, const NdArray& rhs) {
+static NdArray DotNdArray1d(const NdArray& lhs, const NdArray& rhs) {
     if (lhs.size() != rhs.size()) {
         throw std::runtime_error("Invalid size for inner product of 1D");
     }
@@ -572,7 +573,7 @@ static NdArray DotNdArray1D(const NdArray& lhs, const NdArray& rhs) {
     return {sum};
 }
 
-static NdArray DotNdArray2D(const NdArray& lhs, const NdArray& rhs) {
+static NdArray DotNdArray2d(const NdArray& lhs, const NdArray& rhs) {
     const Shape& l_shape = lhs.shape();  // 2 == size
     const Shape& r_shape = rhs.shape();  // 2 == size
     if (l_shape[1] != r_shape[0]) {
@@ -601,7 +602,7 @@ static NdArray DotNdArray2D(const NdArray& lhs, const NdArray& rhs) {
     return ret;
 }
 
-static NdArray DotNdArrayNDMD(const NdArray& lhs, const NdArray& rhs) {
+static NdArray DotNdArrayNdMd(const NdArray& lhs, const NdArray& rhs) {
     const Shape& l_shape = lhs.shape();  // 1 <= size
     const Shape& r_shape = rhs.shape();  // 2 <= size
 
@@ -648,6 +649,40 @@ static NdArray DotNdArrayNDMD(const NdArray& lhs, const NdArray& rhs) {
         ret_data[ret_idx] = sum;
     }
     return ret;
+}
+
+static NdArray CrossNdArray1d1dShape33(const NdArray& lhs, const NdArray& rhs) {
+    // lhs.shape() == {3} && rhs.shape == {3}
+    const float *l_data = lhs.data();
+    const float *r_data = rhs.data();
+    return {l_data[1] * r_data[2] - l_data[2] * r_data[1],
+            l_data[2] * r_data[0] - l_data[0] * r_data[2],
+            l_data[0] * r_data[1] - l_data[1] * r_data[0]};
+}
+
+static NdArray CrossNdArray1d1dShape32(const NdArray& lhs, const NdArray& rhs) {
+    // lhs.shape() == {3} && rhs.shape == {2}
+    const float *l_data = lhs.data();
+    const float *r_data = rhs.data();
+    return {-l_data[2] * r_data[1],
+            l_data[2] * r_data[0],
+            l_data[0] * r_data[1] - l_data[1] * r_data[0]};
+}
+
+static NdArray CrossNdArray1d1dShape23(const NdArray& lhs, const NdArray& rhs) {
+    // lhs.shape() == {3} && rhs.shape == {3}
+    const float *l_data = lhs.data();
+    const float *r_data = rhs.data();
+    return {l_data[1] * r_data[2],
+            -l_data[0] * r_data[2],
+            l_data[0] * r_data[1] - l_data[1] * r_data[0]};
+}
+
+static NdArray CrossNdArray1d1dShape22(const NdArray& lhs, const NdArray& rhs) {
+    // lhs.shape() == {2} && rhs.shape == {2}
+    const float *l_data = lhs.data();
+    const float *r_data = rhs.data();
+    return {l_data[0] * r_data[1] - l_data[1] * r_data[0]};
 }
 
 // -------------------------- Utilities for Variable ---------------------------
@@ -1053,23 +1088,51 @@ NdArray NdArray::dot(const NdArray& other) const {
         return lhs * static_cast<float>(rhs);
     } else if (l_shape.size() == 1 && r_shape.size() == 1) {
         // Inner product of vector (1D, 1D)
-        return DotNdArray1D(lhs, rhs);
+        return DotNdArray1d(lhs, rhs);
     } else if (l_shape.size() == 2 && r_shape.size() == 2) {
         // Inner product of 2D matrix (2D, 2D)
         // Special version of NDMD. This is for faster calculation.
-        return DotNdArray2D(lhs, rhs);
+        return DotNdArray2d(lhs, rhs);
     } else if (l_shape.size() == 2 && r_shape.size() == 1) {
         // Inner product of 2D matrix and vector (2D, 1D)
         // Special version of ND1D. This is for faster calculation.
         const int n_elem = l_shape[0];
-        return DotNdArray2D(lhs, rhs.reshape(r_shape[0], 1)).reshape(n_elem);
+        return DotNdArray2d(lhs, rhs.reshape(r_shape[0], 1)).reshape(n_elem);
     } else if (r_shape.size() == 1) {
         // Broadcast right 1D array
         const Shape shape(l_shape.begin(), l_shape.end() - 1);
-        return DotNdArrayNDMD(lhs, rhs.reshape(r_shape[0], 1)).reshape(shape);
+        return DotNdArrayNdMd(lhs, rhs.reshape(r_shape[0], 1)).reshape(shape);
     } else {
         // Basic matrix product
-        return DotNdArrayNDMD(lhs, rhs);
+        return DotNdArrayNdMd(lhs, rhs);
+    }
+}
+
+// -------------------------------- Cross Method -------------------------------
+NdArray NdArray::cross(const NdArray& other) const {
+    const NdArray& lhs = *this;
+    const NdArray& rhs = other;
+    const Shape& l_shape = lhs.shape();
+    const Shape& r_shape = rhs.shape();
+    const int l_back = l_shape.back();
+    const int r_back = r_shape.back();
+    if (l_shape.size() == 1 && r_shape.size() == 1) {
+        // 1D cross
+        if (l_back == 3 && r_back == 3) {
+            return CrossNdArray1d1dShape33(lhs, rhs);
+        } else if (l_back == 3 && r_back == 2) {
+            return CrossNdArray1d1dShape32(lhs, rhs);
+        } else if (l_back == 2 && r_back == 3) {
+            return CrossNdArray1d1dShape23(lhs, rhs);
+        } else if (l_back == 2 && r_back == 2) {
+            return CrossNdArray1d1dShape22(lhs, rhs);
+        } else {
+            throw std::runtime_error("incompatible dimensions for cross product"
+                                     " (dimension must be 2 or 3)");
+        }
+    } else {
+        // ND cross
+        throw std::runtime_error("Not implemented");
     }
 }
 
