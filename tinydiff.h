@@ -415,7 +415,6 @@ static Shape PadShape(const Shape& shape, size_t size) {
     return ret_shape;
 }
 
-
 template <typename F>
 static void ApplyOpBroadcastImpl(float* ret_data, const float* l_data,
                                  const float* r_data, const Shape& ret_shape,
@@ -423,7 +422,8 @@ static void ApplyOpBroadcastImpl(float* ret_data, const float* l_data,
                                  const std::vector<int>& ret_child_sizes,
                                  const std::vector<int>& l_child_sizes,
                                  const std::vector<int>& r_child_sizes,
-                                 size_t depth, size_t const depth_offset, F op) {
+                                 size_t depth, size_t const depth_offset,
+                                 F op) {
     if (depth < ret_shape.size() - depth_offset) {
         // Fetch shapes
         const int l_s = l_shape[depth];
@@ -436,10 +436,9 @@ static void ApplyOpBroadcastImpl(float* ret_data, const float* l_data,
         const int n_loop = std::max(l_s, r_s);
         for (int i = 0; i < n_loop; i++) {
             // Apply recursively
-            ApplyOpBroadcastImpl(ret_data, l_data, r_data,
-                                               ret_shape, l_shape, r_shape,
-                                               ret_child_sizes, l_child_sizes,
-                                               r_child_sizes, depth + 1, depth_offset, op);
+            ApplyOpBroadcastImpl(ret_data, l_data, r_data, ret_shape, l_shape,
+                                 r_shape, ret_child_sizes, l_child_sizes,
+                                 r_child_sizes, depth + 1, depth_offset, op);
             // Next pointer
             ret_data += ret_step;
             l_data += l_step;
@@ -452,8 +451,9 @@ static void ApplyOpBroadcastImpl(float* ret_data, const float* l_data,
 }
 
 template <typename F>
-static NdArray ApplyOpBroadcast(const NdArray& lhs, const NdArray& rhs, const Shape& ret_shape, const size_t depth_offset, F op) {
-
+static NdArray ApplyOpBroadcast(const NdArray& lhs, const NdArray& rhs,
+                                const Shape& ret_shape,
+                                const size_t depth_offset, F op) {
     // Pre-compute padded shape
     const Shape& l_shape_pad = PadShape(lhs.shape(), ret_shape.size());
     const Shape& r_shape_pad = PadShape(rhs.shape(), ret_shape.size());
@@ -465,10 +465,9 @@ static NdArray ApplyOpBroadcast(const NdArray& lhs, const NdArray& rhs, const Sh
 
     // Apply with broadcast
     NdArray ret(ret_shape);
-    ApplyOpBroadcastImpl(ret.data(), lhs.data(), rhs.data(),
-                                       ret_shape, l_shape_pad, r_shape_pad,
-                                       ret_child_sizes, l_child_sizes,
-                                       r_child_sizes, 0, depth_offset, op);
+    ApplyOpBroadcastImpl(ret.data(), lhs.data(), rhs.data(), ret_shape,
+                         l_shape_pad, r_shape_pad, ret_child_sizes,
+                         l_child_sizes, r_child_sizes, 0, depth_offset, op);
     return ret;
 }
 
@@ -486,12 +485,12 @@ static NdArray ApplyElemWiseOp(const NdArray& lhs, const NdArray& rhs, F op) {
         }
         return ret;
     } else {
-    // Check it is possible to broadcast
+        // Check it is possible to broadcast
         const Shape& ret_shape = CheckBroadcastable(lhs.shape(), rhs.shape());
         // Wrap operator `float(float, float)` for pointer.
         auto wrapped_op = [&](float* o, const float* l, const float* r) {
-                            *o = op(*l, *r);
-                          };
+            *o = op(*l, *r);
+        };
         // Apply broadcast
         return ApplyOpBroadcast(lhs, rhs, ret_shape, 0, wrapped_op);
     }
