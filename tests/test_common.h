@@ -536,6 +536,90 @@ TEST_CASE("NdArray") {
                        " [7, 7]]");
     }
 
+    // ----------------------------- Axis operation ----------------------------
+    SECTION("Sum") {
+        NdArray m0;
+        auto m1 = NdArray::Arange(6);
+        auto m2 = NdArray::Arange(36).reshape(2, 3, 2, 3);
+        RequireNdArray(m0.sum(), "[0]");
+        RequireNdArray(m1.sum(), "[15]");
+        RequireNdArray(m2.sum({0}),
+                       "[[[18, 20, 22],\n"
+                       "  [24, 26, 28]],\n"
+                       " [[30, 32, 34],\n"
+                       "  [36, 38, 40]],\n"
+                       " [[42, 44, 46],\n"
+                       "  [48, 50, 52]]]");
+        RequireNdArray(m2.sum({2}),
+                       "[[[3, 5, 7],\n"
+                       "  [15, 17, 19],\n"
+                       "  [27, 29, 31]],\n"
+                       " [[39, 41, 43],\n"
+                       "  [51, 53, 55],\n"
+                       "  [63, 65, 67]]]");
+        RequireNdArray(m2.sum({3}),
+                       "[[[3, 12],\n"
+                       "  [21, 30],\n"
+                       "  [39, 48]],\n"
+                       " [[57, 66],\n"
+                       "  [75, 84],\n"
+                       "  [93, 102]]]");
+        RequireNdArray(m2.sum({1, 2}),
+                       "[[45, 51, 57],\n"
+                       " [153, 159, 165]]");
+        RequireNdArray(m2.sum({1, 3}),
+                       "[[63, 90],\n"
+                       " [225, 252]]");
+    }
+
+    SECTION("Min") {
+        NdArray m0;
+        auto m1 = NdArray::Arange(6) - 3.f;
+        auto m2 = NdArray::Arange(12).reshape(2, 3, 2) - 6.f;
+        REQUIRE_THROWS(m0.min());
+        RequireNdArray(m1.min(), "[-3]");
+        RequireNdArray(m2.min({0}),
+                       "[[-6, -5],\n"
+                       " [-4, -3],\n"
+                       " [-2, -1]]");
+        RequireNdArray(m2.min({2}),
+                       "[[-6, -4, -2],\n"
+                       " [0, 2, 4]]");
+        RequireNdArray(m2.min({2, 1}), "[-6, 0]");
+    }
+
+    SECTION("Max") {
+        NdArray m0;
+        auto m1 = NdArray::Arange(6) - 3.f;
+        auto m2 = NdArray::Arange(12).reshape(2, 3, 2) - 6.f;
+        REQUIRE_THROWS(m0.max());
+        RequireNdArray(m1.max(), "[2]");
+        RequireNdArray(m2.max({0}),
+                       "[[0, 1],\n"
+                       " [2, 3],\n"
+                       " [4, 5]]");
+        RequireNdArray(m2.max({2}),
+                       "[[-5, -3, -1],\n"
+                       " [1, 3, 5]]");
+        RequireNdArray(m2.max({2, 1}), "[-1, 5]");
+    }
+
+    SECTION("Mean") {
+        NdArray m0;
+        auto m1 = NdArray::Arange(6) - 3.f;
+        auto m2 = NdArray::Arange(12).reshape(2, 3, 2) - 6.f;
+        RequireNdArray(m0.mean(), "[nan]");
+        RequireNdArray(m1.mean(), "[-0.5]");
+        RequireNdArray(m2.mean({0}),
+                       "[[-3, -2],\n"
+                       " [-1, 0],\n"
+                       " [1, 2]]");
+        RequireNdArray(m2.mean({2}),
+                       "[[-5.5, -3.5, -1.5],\n"
+                       " [0.5, 2.5, 4.5]]");
+        RequireNdArray(m2.mean({2, 1}), "[-3.5, 2.5]");
+    }
+
     // ------------------------------- Operator --------------------------------
     SECTION("Add same shape") {
         auto m1 = NdArray::Arange(12).reshape(2, 3, 2);
@@ -763,6 +847,15 @@ TEST_CASE("NdArray") {
         RequireNdArray(ArcTan2(m1, 2.f), "[-0.463648, 0, 0.463648]");
         RequireNdArray(ArcTan2(2.f, m1), "[2.03444, 1.5708, 1.10715]");
     }
+
+    //     SECTION("Function Axis") {
+    //         auto m1 = NdArray::Arange(6);
+    //         auto m2 = NdArray::Arange(24).reshape(2, 3, 2, 3);
+    //         std::cout << Sum(m1) << std::endl;
+    //         std::cout << Sum(m2, {0}) << std::endl;
+    //         std::cout << Sum(m2, {2}) << std::endl;
+    //         std::cout << Sum(m2, {1, 2}) << std::endl;
+    //     }
 }
 
 TEST_CASE("AutoGrad") {

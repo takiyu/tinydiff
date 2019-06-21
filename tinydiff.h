@@ -1,6 +1,7 @@
 #ifndef TINYDIFF_H_ONCE
 #define TINYDIFF_H_ONCE
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <exception>
@@ -19,6 +20,7 @@ using InitShape = std::initializer_list<int>;
 using Shape = std::vector<int>;
 using Index = std::vector<int>;
 using SliceIndex = std::vector<std::pair<int, int>>;
+using Axes = std::vector<int>;
 class Variable;
 using Variables = std::vector<Variable>;
 class Function;
@@ -121,8 +123,12 @@ public:
 
     NdArray dot(const NdArray& other) const;
     NdArray dot(float other) const;
-
     NdArray cross(const NdArray& other) const;
+
+    NdArray sum(const Axes& = {}) const;
+    NdArray min(const Axes& = {}) const;
+    NdArray max(const Axes& = {}) const;
+    NdArray mean(const Axes& = {}) const;
 
     class Substance;
 
@@ -194,6 +200,11 @@ NdArray ArcTan(const NdArray& x);
 NdArray ArcTan2(const NdArray& y, const NdArray& x);
 NdArray ArcTan2(const NdArray& y, float x);
 NdArray ArcTan2(float y, const NdArray& x);
+// Axis functions
+NdArray Sum(const NdArray& x, const Axes& axes = {});
+NdArray Min(const NdArray& x, const Axes& axes = {});
+NdArray Max(const NdArray& x, const Axes& axes = {});
+NdArray Mean(const NdArray& x, const Axes& axes = {});
 
 // =============================================================================
 // ================================== Variable =================================
@@ -585,6 +596,121 @@ static NdArray ApplySingleOp(const NdArray& x, F op) {
         *(ret_data++) = op(*(x_data++));
     }
     return ret;
+}
+
+// ------------------- Utilities for NdArray (Axis reduction) ------------------
+static int ComputeReducedIndex(int src_idx,
+                               const std::vector<int>& ret_child_sizes,
+                               const std::vector<int>& src_child_sizes,
+                               const Axes& sorted_axes) {
+    // Convert source index to result index
+    // [2, (3), 4, (5), 6]
+    int ret_idx = 0;
+    for (auto&& axis : sorted_axes) {
+        if (axis == 0) {
+            continue;  // No upper dimension
+        }
+        const size_t axis_l = static_cast<size_t>(axis);
+        // Accumulate upper dimension
+        const int ret_idx_base = src_idx / src_child_sizes[axis_l - 1];
+        ret_idx += ret_idx_base * ret_child_sizes[axis_l];
+        // Remove processed dimension
+        src_idx = src_idx % src_child_sizes[axis_l];
+    }
+
+    // Add rest dimension
+    const int last_axis = sorted_axes.back();
+    ret_idx += src_idx % src_child_sizes[static_cast<size_t>(last_axis)];
+
+    return ret_idx;
+}
+
+static auto CheckReductable(const Shape& shape, const Axes& axes) {
+    // Mark reduction axes
+    std::vector<char> mark(shape.size(), false);
+    const int n_shape = static_cast<int>(shape.size());
+    for (auto&& axis : axes) {
+        if (0 <= axis && axis < n_shape) {
+            mark[static_cast<size_t>(axis)] = true;
+        } else {
+            throw std::runtime_error("Invalid axes for reduction");
+        }
+    }
+
+    // Pick up unmarked dimension
+    Shape ret_shape;
+    Shape ret_shape_pad;
+    for (size_t i = 0; i < mark.size(); i++) {
+        if (mark[i]) {
+            ret_shape_pad.push_back(1);
+        } else {
+            ret_shape.push_back(shape[i]);
+            ret_shape_pad.push_back(shape[i]);
+        }
+    }
+    return std::tuple<Shape, Shape>(std::move(ret_shape),
+                                    std::move(ret_shape_pad));
+}
+
+template <typename F>
+static NdArray ReduceAxisAll(const NdArray& src, const float init_v, F op) {
+    const float* data = src.data();
+    float ret = init_v;
+    for (size_t i = 0; i < src.size(); i++) {
+        ret = op(ret, *(data++));
+    }
+    return {ret};
+}
+
+template <typename F>
+static NdArray ReduceAxis(const NdArray& src, const Axes& axes,
+                          const float init_v, F op) {
+    if (axes.size() == 0) {
+        // No Axis -> Reduce all
+        return ReduceAxisAll(src, init_v, op);
+    } else {
+        // Check it is possible to reduce.
+        const Shape& src_shape = src.shape();
+        const auto& ret_shapes = CheckReductable(src_shape, axes);
+        const Shape& ret_shape = std::get<0>(ret_shapes);
+        const Shape& ret_shape_pad = std::get<1>(ret_shapes);
+
+        // Pre-compute child sizes
+        const auto& ret_child_sizes = ComputeChildSizes(ret_shape_pad);
+        const auto& src_child_sizes = ComputeChildSizes(src_shape);
+
+        // Sort axes
+        Axes sorted_axes = axes;
+        std::sort(sorted_axes.begin(), sorted_axes.end());
+
+        // Result array with value initialization
+        NdArray ret(ret_shape, init_v);
+
+        // Reduce
+        float* ret_data = ret.data();
+        const float* src_data = src.data();
+        for (size_t src_idx = 0; src_idx < src.size(); src_idx++) {
+            // Result index
+            const int ret_idx = ComputeReducedIndex(
+                    src_idx, ret_child_sizes, src_child_sizes, sorted_axes);
+            // Reduce one source element
+            float& ret_v = ret_data[ret_idx];
+            ret_v = op(ret_v, *(src_data++));
+        }
+
+        return ret;
+    }
+}
+
+template <typename F>
+static NdArray ReduceAxisNoEmpty(const NdArray& src, const Axes& axes,
+                                 const float init_v, F op) {
+    // Check empty
+    if (src.size() == 0) {
+        throw std::runtime_error("zero-size array to reduction operation");
+    }
+    // Call normally
+    return ReduceAxis(src, axes, init_v, op);
 }
 
 // ----------------------- Utilities for NdArray (Print) -----------------------
@@ -1272,6 +1398,23 @@ NdArray NdArray::cross(const NdArray& other) const {
             " (dimension must be 2 or 3)");
 }
 
+// -------------------------------- Axis Method --------------------------------
+NdArray NdArray::sum(const Axes& axes) const {
+    return Sum(*this, axes);
+}
+
+NdArray NdArray::min(const Axes& axes) const {
+    return Min(*this, axes);
+}
+
+NdArray NdArray::max(const Axes& axes) const {
+    return Max(*this, axes);
+}
+
+NdArray NdArray::mean(const Axes& axes) const {
+    return Mean(*this, axes);
+}
+
 // ---------------------- Template Method Specializations ----------------------
 // Assuming up to 10 dimensions.
 // For `Empty(S... shape)`
@@ -1586,6 +1729,30 @@ NdArray ArcTan2(const NdArray& y, float x) {
 NdArray ArcTan2(float y, const NdArray& x) {
     return ApplyElemWiseOp(y, x,
                            static_cast<float (*)(float, float)>(std::atan2));
+}
+
+// Axis functions
+NdArray Sum(const NdArray& x, const Axes& axes) {
+    return ReduceAxis(x, axes, 0.f, std::plus<float>());
+}
+
+NdArray Min(const NdArray& x, const Axes& axes) {
+    return ReduceAxisNoEmpty(x, axes, std::numeric_limits<float>::max(),
+                             [](float a, float b) { return std::min(a, b); });
+}
+
+NdArray Max(const NdArray& x, const Axes& axes) {
+    return ReduceAxisNoEmpty(x, axes, -std::numeric_limits<float>::max(),
+                             [](float a, float b) { return std::max(a, b); });
+}
+
+NdArray Mean(const NdArray& x, const Axes& axes) {
+    if (x.size() == 0) {
+        return {std::numeric_limits<float>::quiet_NaN()};
+    }
+    auto&& sum = Sum(x, axes);
+    float denom = x.size() / sum.size();
+    return sum / denom;
 }
 
 // =============================================================================
