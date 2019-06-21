@@ -159,6 +159,14 @@ NdArray operator+(const float& lhs, const NdArray& rhs);
 NdArray operator-(const float& lhs, const NdArray& rhs);
 NdArray operator*(const float& lhs, const NdArray& rhs);
 NdArray operator/(const float& lhs, const NdArray& rhs);
+NdArray operator+=(NdArray& lhs, const NdArray& rhs);
+NdArray operator-=(NdArray& lhs, const NdArray& rhs);
+NdArray operator*=(NdArray& lhs, const NdArray& rhs);
+NdArray operator/=(NdArray& lhs, const NdArray& rhs);
+NdArray operator+=(NdArray& lhs, float rhs);
+NdArray operator-=(NdArray& lhs, float rhs);
+NdArray operator*=(NdArray& lhs, float rhs);
+NdArray operator/=(NdArray& lhs, float rhs);
 NdArray operator+(const NdArray& x);
 NdArray operator-(const NdArray& x);
 
@@ -519,9 +527,10 @@ static void ApplyOpBroadcastImpl(float* ret_data, const float* l_data,
 }
 
 template <typename F>
-static NdArray ApplyOpBroadcast(const NdArray& lhs, const NdArray& rhs,
-                                const Shape& ret_shape,
-                                const size_t depth_offset, F op) {
+static void ApplyOpBroadcast(const NdArray& lhs, const NdArray& rhs,
+                             NdArray& ret, const size_t depth_offset, F op) {
+    const Shape& ret_shape = ret.shape();
+
     // Pre-compute padded shape
     const Shape& l_shape_pad = PadShape(lhs.shape(), ret_shape.size());
     const Shape& r_shape_pad = PadShape(rhs.shape(), ret_shape.size());
@@ -532,11 +541,9 @@ static NdArray ApplyOpBroadcast(const NdArray& lhs, const NdArray& rhs,
     const std::vector<int>& r_child_sizes = ComputeChildSizes(r_shape_pad);
 
     // Apply with broadcast
-    NdArray ret(ret_shape);
     ApplyOpBroadcastImpl(ret.data(), lhs.data(), rhs.data(), ret_shape,
                          l_shape_pad, r_shape_pad, ret_child_sizes,
                          l_child_sizes, r_child_sizes, 0, depth_offset, op);
-    return ret;
 }
 
 // --------------- Utilities for NdArray (Broadcast element-wise) --------------
@@ -561,7 +568,9 @@ static NdArray ApplyElemWiseOp(const NdArray& lhs, const NdArray& rhs, F op) {
             *o = op(*l, *r);
         };
         // Apply broadcast
-        return ApplyOpBroadcast(lhs, rhs, ret_shape, 0, wrapped_op);
+        NdArray ret(ret_shape);
+        ApplyOpBroadcast(lhs, rhs, ret, 0, wrapped_op);
+        return ret;
     }
 }
 
@@ -589,6 +598,47 @@ static NdArray ApplyElemWiseOp(const float& lhs, const NdArray& rhs, F op) {
         *(ret_data++) = op(lhs, *(r_data++));
     }
     return ret;
+}
+
+// ----------- Utilities for NdArray (Broadcast element-wise inplace) ----------
+template <typename F>
+static NdArray ApplyElemWiseOpInplcace(NdArray& lhs, const NdArray& rhs, F op) {
+    if (lhs.shape() == rhs.shape()) {
+        // Apply without broadcast because of same size for speed up.
+        float* l_data = lhs.data();
+        const float* r_data = rhs.data();
+        // Simply apply all
+        for (size_t i = 0; i < lhs.size(); i++) {
+            *l_data = op(*l_data, *(r_data++));
+            l_data++;
+        }
+        return lhs;
+    } else {
+        // Check it is possible to broadcast
+        const Shape& ret_shape = CheckBroadcastable(lhs.shape(), rhs.shape());
+        if (ret_shape != lhs.shape()) {
+            throw std::runtime_error("Invalid shape for inplace operation");
+        }
+        // Wrap operator `float(float, float)` for pointer.
+        auto wrapped_op = [&](float* o, const float* l, const float* r) {
+            *o = op(*l, *r);
+        };
+        // Apply broadcast (result matrix is lhs)
+        ApplyOpBroadcast(lhs, rhs, lhs, 0, wrapped_op);
+        return lhs;
+    }
+}
+
+template <typename F>
+static NdArray ApplyElemWiseOpInplcace(NdArray& lhs, float rhs, F op) {
+    // Broadcast right float
+    float* l_data = lhs.data();
+    // Simply apply all
+    for (size_t i = 0; i < lhs.size(); i++) {
+        *l_data = op(*l_data, rhs);
+        l_data++;
+    }
+    return lhs;
 }
 
 // ------------- Utilities for NdArray (Broadcast single operator) -------------
@@ -920,7 +970,9 @@ static NdArray CrossNdArrayNdMd(const NdArray& lhs, const NdArray& rhs,
                                          {r_shape.begin(), r_shape.end() - 1});
     ret_shape.push_back(last_size);
     // Apply broadcast
-    return ApplyOpBroadcast(lhs, rhs, ret_shape, 1, op);
+    NdArray ret(ret_shape);
+    ApplyOpBroadcast(lhs, rhs, ret, 1, op);
+    return ret;
 }
 
 // -----------------------------------------------------------------------------
@@ -1608,6 +1660,38 @@ NdArray operator*(const float& lhs, const NdArray& rhs) {
 
 NdArray operator/(const float& lhs, const NdArray& rhs) {
     return Divide(lhs, rhs);
+}
+
+NdArray operator+=(NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::plus<float>());
+}
+
+NdArray operator-=(NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::minus<float>());
+}
+
+NdArray operator*=(NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::multiplies<float>());
+}
+
+NdArray operator/=(NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::divides<float>());
+}
+
+NdArray operator+=(NdArray& lhs, float rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::plus<float>());
+}
+
+NdArray operator-=(NdArray& lhs, float rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::minus<float>());
+}
+
+NdArray operator*=(NdArray& lhs, float rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::multiplies<float>());
+}
+
+NdArray operator/=(NdArray& lhs, float rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::divides<float>());
 }
 
 NdArray operator+(const NdArray& x) {

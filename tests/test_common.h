@@ -767,6 +767,61 @@ TEST_CASE("NdArray") {
                        " [3.33333, 2.5, 2]]");
     }
 
+    SECTION("Arithmetic inplace operators (ndarray, ndarray)") {
+        auto m0 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m2 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m3 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m4 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m5 = NdArray::Arange(3.f);
+        m0 += m0;
+        m1 += NdArray::Arange(3.f);
+        m2 -= NdArray::Arange(3.f);
+        m3 *= NdArray::Arange(3.f);
+        m4 /= NdArray::Arange(3.f);
+        RequireNdArray(m0,
+                       "[[0, 2, 4],\n"
+                       " [6, 8, 10]]");
+        RequireNdArray(m1,
+                       "[[0, 2, 4],\n"
+                       " [3, 5, 7]]");
+        RequireNdArray(m2,
+                       "[[0, 0, 0],\n"
+                       " [3, 3, 3]]");
+        RequireNdArray(m3,
+                       "[[0, 1, 4],\n"
+                       " [0, 4, 10]]");
+        // `0.f / 0.f` can be both of `nan` and `-nan`.
+        m4(0, 0) = std::abs(m4(0, 0));
+        RequireNdArray(m4,
+                       "[[nan, 1, 1],\n"
+                       " [inf, 4, 2.5]]");
+        REQUIRE_THROWS(m5 += m0);
+    }
+
+    SECTION("Arithmetic inplace operators (ndarray, float)") {
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m2 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m3 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m4 = NdArray::Arange(6.f).reshape(2, 3);
+        m1 += 10.f;
+        m2 -= 10.f;
+        m3 *= 10.f;
+        m4 /= 10.f;
+        RequireNdArray(m1,
+                       "[[10, 11, 12],\n"
+                       " [13, 14, 15]]");
+        RequireNdArray(m2,
+                       "[[-10, -9, -8],\n"
+                       " [-7, -6, -5]]");
+        RequireNdArray(m3,
+                       "[[0, 10, 20],\n"
+                       " [30, 40, 50]]");
+        RequireNdArray(m4,
+                       "[[0, 0.1, 0.2],\n"
+                       " [0.3, 0.4, 0.5]]");
+    }
+
     SECTION("Single +- operators") {
         auto m1 = NdArray::Arange(6.f).reshape(2, 3);
         auto m_p = +m1;
@@ -892,7 +947,7 @@ TEST_CASE("NdArray") {
 
 TEST_CASE("AutoGrad") {
     SECTION("Basic") {
-        Variable a({1.f, 10.f});
+        Variable a(NdArray{{1.f, 10.f}});
         Variable b({2.f, 20.f});
 
         Variable c, d, e;
