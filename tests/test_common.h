@@ -31,6 +31,7 @@ TEST_CASE("NdArray") {
         REQUIRE(m1.empty());
         REQUIRE(m1.size() == 0);
         REQUIRE(m1.shape() == Shape{0});
+        REQUIRE(m1.ndim() == 1);
     }
 
     // --------------------------- Float initializer ---------------------------
@@ -147,6 +148,8 @@ TEST_CASE("NdArray") {
         RequireNdArray(m2,
                        "[[-1, -1, -1],\n"
                        " [-1, -1, -1]]");
+        REQUIRE(m1.ndim() == 2);
+        REQUIRE(m1.flatten().ndim() == 1);
     }
 
     // ------------------------------- Begin/End -------------------------------

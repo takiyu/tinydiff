@@ -93,6 +93,7 @@ public:
     bool empty() const;
     size_t size() const;
     const Shape& shape() const;
+    size_t ndim() const;
     float* data();
     const float* data() const;
     void fill(float v);
@@ -1146,6 +1147,10 @@ size_t NdArray::size() const {
 
 const Shape& NdArray::shape() const {
     return m_sub->shape;
+}
+
+size_t NdArray::ndim() const {
+    return m_sub->shape.size();
 }
 
 float* NdArray::data() {
