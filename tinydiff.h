@@ -120,6 +120,8 @@ public:
     NdArray slice(std::initializer_list<I>... slice_index) const;  // {i, j}...
 
     NdArray dot(const NdArray& other) const;
+    NdArray dot(float other) const;
+
     NdArray cross(const NdArray& other) const;
 
     class Substance;
@@ -131,11 +133,6 @@ private:
     static std::random_device s_rand_seed;
     static std::mt19937 s_rand_engine;
 };
-
-// ---------------------------- Operator Functions -----------------------------
-NdArray Dot(const NdArray& lhs, const NdArray& rhs);
-NdArray Cross(const NdArray& lhs, const NdArray& rhs);
-NdArray Exp(const NdArray& x);
 
 // --------------------------------- Operators ---------------------------------
 std::ostream& operator<<(std::ostream& os, const NdArray& x);
@@ -154,6 +151,49 @@ NdArray operator*(const float& lhs, const NdArray& rhs);
 NdArray operator/(const float& lhs, const NdArray& rhs);
 NdArray operator+(const NdArray& x);
 NdArray operator-(const NdArray& x);
+
+// ---------------------------- Operator Functions -----------------------------
+// Arithmetic operators (NdArray, NdArray)
+NdArray Add(const NdArray& lhs, const NdArray& rhs);
+NdArray Subtract(const NdArray& lhs, const NdArray& rhs);
+NdArray Multiply(const NdArray& lhs, const NdArray& rhs);
+NdArray Divide(const NdArray& lhs, const NdArray& rhs);
+// Arithmetic operators (NdArray, float)
+NdArray Add(const NdArray& lhs, float rhs);
+NdArray Subtract(const NdArray& lhs, float rhs);
+NdArray Multiply(const NdArray& lhs, float rhs);
+NdArray Divide(const NdArray& lhs, float rhs);
+// Arithmetic operators (float, NdArray)
+NdArray Add(float lhs, const NdArray& rhs);
+NdArray Subtract(float lhs, const NdArray& rhs);
+NdArray Multiply(float lhs, const NdArray& rhs);
+NdArray Divide(float lhs, const NdArray& rhs);
+// Matrix operators
+NdArray Dot(const NdArray& lhs, const NdArray& rhs);
+NdArray Dot(const NdArray& lhs, float rhs);
+NdArray Dot(float lhs, const NdArray& rhs);
+NdArray Cross(const NdArray& lhs, const NdArray& rhs);
+// Basic math operators
+NdArray Abs(const NdArray& x);
+NdArray Ceil(const NdArray& x);
+NdArray Floor(const NdArray& x);
+NdArray Sqrt(const NdArray& x);
+NdArray Exp(const NdArray& x);
+NdArray Log(const NdArray& x);
+NdArray Power(const NdArray& x, const NdArray& y);
+NdArray Power(const NdArray& x, float y);
+NdArray Power(float x, const NdArray& y);
+// Trigonometric functions
+NdArray Sin(const NdArray& x);
+NdArray Cos(const NdArray& x);
+NdArray Tan(const NdArray& x);
+// Inverse trigonometric functions
+NdArray ArcSin(const NdArray& x);
+NdArray ArcCos(const NdArray& x);
+NdArray ArcTan(const NdArray& x);
+NdArray ArcTan2(const NdArray& y, const NdArray& x);
+NdArray ArcTan2(const NdArray& y, float x);
+NdArray ArcTan2(float y, const NdArray& x);
 
 // =============================================================================
 // ================================== Variable =================================
@@ -243,12 +283,31 @@ Variable exp(Variable x);
 // *****************************************************************************
 #ifdef TINYDIFF_IMPLEMENTATION
 
+// -----------------------------------------------------------------------------
 // --------------------------- Utilities for NdArray ---------------------------
+// -----------------------------------------------------------------------------
 template <typename T>
 T clamp(const T& v, const T& lower, const T& upper) {
     return std::min(std::max(v, lower), upper);
 }
 
+static std::vector<int> ComputeChildSizes(const Shape& shape) {
+    const size_t n_shape = shape.size();
+    if (n_shape == 0) {
+        return {};
+    }
+    // Compute child sizes from back (the number of children for each dimension)
+    std::vector<int> child_sizes(n_shape, 1);
+    int size = 1;
+    for (size_t depth = n_shape - 1; 0 < depth; depth--) {
+        child_sizes[depth] = size;
+        size *= shape[depth];
+    }
+    child_sizes[0] = size;
+    return child_sizes;
+}
+
+// --------------- Utilities for NdArray (Float initializer list) --------------
 template <typename FList>
 std::list<int> CheckFListShapeImpl(const FList& init_list) {
     if (init_list.size() == 0) {
@@ -302,6 +361,7 @@ void CopyFListElems(const FList& init_list, float* data) {
     CopyFListElemsImpl(init_list, data);
 }
 
+// ---------------------- Utilities for NdArray (Random) -----------------------
 template <typename D, typename R>
 NdArray CreateRandomArray(const Shape& shape, D&& dist, R&& rand_engine) {
     // Create empty array
@@ -314,22 +374,7 @@ NdArray CreateRandomArray(const Shape& shape, D&& dist, R&& rand_engine) {
     return ret;
 }
 
-static std::vector<int> ComputeChildSizes(const Shape& shape) {
-    const size_t n_shape = shape.size();
-    if (n_shape == 0) {
-        return {};
-    }
-    // Compute child sizes from back (the number of children for each dimension)
-    std::vector<int> child_sizes(n_shape, 1);
-    int size = 1;
-    for (size_t depth = n_shape - 1; 0 < depth; depth--) {
-        child_sizes[depth] = size;
-        size *= shape[depth];
-    }
-    child_sizes[0] = size;
-    return child_sizes;
-}
-
+// ----------------------- Utilities for NdArray (Slice) -----------------------
 static void CopySliceImpl(const float*& src_data, float*& dst_data,
                           const Shape& src_shape, const SliceIndex& slice_index,
                           const std::vector<int>& child_sizes, size_t depth) {
@@ -376,6 +421,7 @@ static std::pair<int, int> CvtToSliceIndexItem(std::initializer_list<int> l) {
     return {*l.begin(), *(l.begin() + 1)};
 }
 
+// ------------------ Utilities for NdArray (Broadcast common) -----------------
 static Shape CheckBroadcastable(const Shape& l_shape, const Shape& r_shape) {
     // We assuming left array has deeper shape than right one.
     if (l_shape.size() < r_shape.size()) {
@@ -477,6 +523,7 @@ static NdArray ApplyOpBroadcast(const NdArray& lhs, const NdArray& rhs,
     return ret;
 }
 
+// --------------- Utilities for NdArray (Broadcast element-wise) --------------
 template <typename F>
 static NdArray ApplyElemWiseOp(const NdArray& lhs, const NdArray& rhs, F op) {
     if (lhs.shape() == rhs.shape()) {
@@ -528,6 +575,19 @@ static NdArray ApplyElemWiseOp(const float& lhs, const NdArray& rhs, F op) {
     return ret;
 }
 
+// ------------- Utilities for NdArray (Broadcast single operator) -------------
+template <typename F>
+static NdArray ApplySingleOp(const NdArray& x, F op) {
+    NdArray ret(x.shape());
+    float* ret_data = ret.data();
+    const float* x_data = x.data();
+    for (size_t i = 0; i < x.size(); i++) {
+        *(ret_data++) = op(*(x_data++));
+    }
+    return ret;
+}
+
+// ----------------------- Utilities for NdArray (Print) -----------------------
 static void OutputArrayLine(std::ostream& os, const float*& data, size_t size) {
     os << "[";  // Begin of a line
     for (size_t i = 0; i < size; i++) {
@@ -568,6 +628,35 @@ static void OutputArrayMultiDim(std::ostream& os, const float*& data,
     }
 }
 
+static void OutputNdArray(std::ostream& os, const NdArray& x) {
+    const size_t size = x.size();
+    const Shape& shape = x.shape();
+    const float* data = x.data();
+
+    if (size == 0 || shape.size() == 0) {
+        // Empty
+        os << "[]";
+    } else if (shape.size() == 1) {
+        // 1-dim
+        OutputArrayLine(os, data, size);
+    } else {
+        // Multi-dim
+        OutputArrayMultiDim(os, data, shape, 0);
+    }
+}
+
+static void OutputShape(std::ostream& os, const Shape& shape) {
+    os << "[";
+    for (size_t i = 0; i < shape.size(); i++) {
+        os << shape[i];
+        if (i < shape.size() - 1) {
+            os << ", ";
+        }
+    }
+    os << "]";
+}
+
+// -------------------- Utilities for NdArray (Dot product) --------------------
 static NdArray DotNdArray1d(const NdArray& lhs, const NdArray& rhs) {
     if (lhs.size() != rhs.size()) {
         throw std::runtime_error("Invalid size for inner product of 1D");
@@ -660,6 +749,7 @@ static NdArray DotNdArrayNdMd(const NdArray& lhs, const NdArray& rhs) {
     return ret;
 }
 
+// ------------------- Utilities for NdArray (Cross product) -------------------
 static void CrossNdArray1d1dShape33(float* ret_data, const float* l_data,
                                     const float* r_data) {
     // lhs.shape() == {3} && rhs.shape == {3}
@@ -702,7 +792,9 @@ static NdArray CrossNdArrayNdMd(const NdArray& lhs, const NdArray& rhs,
     return ApplyOpBroadcast(lhs, rhs, ret_shape, 1, op);
 }
 
+// -----------------------------------------------------------------------------
 // -------------------------- Utilities for Variable ---------------------------
+// -----------------------------------------------------------------------------
 template <typename T>
 void CheckSize(const std::vector<T>& x, size_t n) {
     if (x.size() != n) {
@@ -1125,6 +1217,11 @@ NdArray NdArray::dot(const NdArray& other) const {
     }
 }
 
+NdArray NdArray::dot(float other) const {
+    // Simple multiply (right)
+    return (*this) * other;
+}
+
 // -------------------------------- Cross Method -------------------------------
 NdArray NdArray::cross(const NdArray& other) const {
     const NdArray& lhs = *this;
@@ -1274,102 +1371,63 @@ template NdArray NdArray::slice(ISII, ISII, ISII, ISII, ISII, ISII, ISII, ISII,
 template NdArray NdArray::slice(ISII, ISII, ISII, ISII, ISII, ISII, ISII, ISII,
                                 ISII, ISII, ISII) const;
 
-// ---------------------------- Operator Functions -----------------------------
-NdArray Dot(const NdArray& lhs, const NdArray& rhs) {
-    return lhs.dot(rhs);
-}
-
-NdArray Cross(const NdArray& lhs, const NdArray& rhs) {
-    return lhs.cross(rhs);
-}
-
-NdArray Exp(const NdArray& x) {
-    NdArray ret(x.shape());
-    float* ret_data = ret.data();
-    const float* x_data = x.data();
-    for (size_t i = 0; i < x.size(); i++) {
-        *(ret_data++) = std::exp(*(x_data++));
-    }
-    return ret;
-}
-
 // --------------------------------- Operators ---------------------------------
 std::ostream& operator<<(std::ostream& os, const NdArray& x) {
-    const size_t size = x.size();
-    const Shape& shape = x.shape();
-    const float* data = x.data();
-
-    if (size == 0 || shape.size() == 0) {
-        // Empty
-        os << "[]";
-    } else if (shape.size() == 1) {
-        // 1-dim
-        OutputArrayLine(os, data, size);
-    } else {
-        // Multi-dim
-        OutputArrayMultiDim(os, data, shape, 0);
-    }
+    OutputNdArray(os, x);
     return os;
 }
 
 std::ostream& operator<<(std::ostream& os, const Shape& shape) {
-    os << "[";
-    for (size_t i = 0; i < shape.size(); i++) {
-        os << shape[i];
-        if (i < shape.size() - 1) {
-            os << ", ";
-        }
-    }
-    os << "]";
+    OutputShape(os, shape);
     return os;
 }
 
 NdArray operator+(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::plus<float>());
+    return Add(lhs, rhs);
 }
 
 NdArray operator-(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::minus<float>());
+    return Subtract(lhs, rhs);
 }
 
 NdArray operator*(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::multiplies<float>());
+    return Multiply(lhs, rhs);
 }
 
 NdArray operator/(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::divides<float>());
+    return Divide(lhs, rhs);
 }
 
 NdArray operator+(const NdArray& lhs, const float& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::plus<float>());
+    return Add(lhs, rhs);
 }
 
 NdArray operator-(const NdArray& lhs, const float& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::minus<float>());
+    return Subtract(lhs, rhs);
 }
 
 NdArray operator*(const NdArray& lhs, const float& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::multiplies<float>());
+    return Multiply(lhs, rhs);
 }
 
 NdArray operator/(const NdArray& lhs, const float& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::divides<float>());
+    return Divide(lhs, rhs);
 }
 
 NdArray operator+(const float& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::plus<float>());
+    return Add(lhs, rhs);
 }
 
 NdArray operator-(const float& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::minus<float>());
+    return Subtract(lhs, rhs);
 }
 
 NdArray operator*(const float& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::multiplies<float>());
+    return Multiply(lhs, rhs);
 }
 
 NdArray operator/(const float& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::divides<float>());
+    return Divide(lhs, rhs);
 }
 
 NdArray operator+(const NdArray& x) {
@@ -1377,13 +1435,157 @@ NdArray operator+(const NdArray& x) {
 }
 
 NdArray operator-(const NdArray& x) {
-    NdArray ret(x.shape());
-    const float* x_data = x.data();
-    float* ret_data = ret.data();
-    for (size_t i = 0; i < ret.size(); i++) {
-        *(ret_data++) = -*(x_data++);  // Copy negative
-    }
-    return ret;
+    return ApplySingleOp(x, [](float v) { return -v; });
+}
+
+// ---------------------------- Operator Functions -----------------------------
+// Arithmetic operators (NdArray, NdArray)
+NdArray Add(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::plus<float>());
+}
+
+NdArray Subtract(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::minus<float>());
+}
+
+NdArray Multiply(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::multiplies<float>());
+}
+
+NdArray Divide(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::divides<float>());
+}
+
+// Arithmetic operators (NdArray, float)
+NdArray Add(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::plus<float>());
+}
+
+NdArray Subtract(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::minus<float>());
+}
+
+NdArray Multiply(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::multiplies<float>());
+}
+
+NdArray Divide(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::divides<float>());
+}
+
+// Arithmetic operators (float, NdArray)
+NdArray Add(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::plus<float>());
+}
+
+NdArray Subtract(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::minus<float>());
+}
+
+NdArray Multiply(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::multiplies<float>());
+}
+
+NdArray Divide(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::divides<float>());
+}
+
+// Matrix operators
+NdArray Dot(const NdArray& lhs, const NdArray& rhs) {
+    return lhs.dot(rhs);
+}
+
+NdArray Dot(const NdArray& lhs, float rhs) {
+    return lhs * rhs;  // Simple multiply
+}
+
+NdArray Dot(float lhs, const NdArray& rhs) {
+    return lhs * rhs;  // Simple multiply
+}
+
+NdArray Cross(const NdArray& lhs, const NdArray& rhs) {
+    return lhs.cross(rhs);
+}
+
+// Basic math operators
+NdArray Abs(const NdArray& x) {
+    return ApplySingleOp(x, static_cast<float (*)(float)>(std::abs));
+}
+
+NdArray Ceil(const NdArray& x) {
+    return ApplySingleOp(x, static_cast<float (*)(float)>(std::ceil));
+}
+
+NdArray Floor(const NdArray& x) {
+    return ApplySingleOp(x, static_cast<float (*)(float)>(std::floor));
+}
+
+NdArray Sqrt(const NdArray& x) {
+    return ApplySingleOp(x, static_cast<float (*)(float)>(std::sqrt));
+}
+
+NdArray Exp(const NdArray& x) {
+    return ApplySingleOp(x, static_cast<float (*)(float)>(std::exp));
+}
+
+NdArray Log(const NdArray& x) {
+    return ApplySingleOp(x, static_cast<float (*)(float)>(std::log));
+}
+
+NdArray Power(const NdArray& x, const NdArray& y) {
+    return ApplyElemWiseOp(x, y,
+                           static_cast<float (*)(float, float)>(std::pow));
+}
+
+NdArray Power(const NdArray& x, float y) {
+    return ApplyElemWiseOp(x, y,
+                           static_cast<float (*)(float, float)>(std::pow));
+}
+
+NdArray Power(float x, const NdArray& y) {
+    return ApplyElemWiseOp(x, y,
+                           static_cast<float (*)(float, float)>(std::pow));
+}
+
+// Trigonometric functions
+NdArray Sin(const NdArray& x) {
+    return ApplySingleOp(x, static_cast<float (*)(float)>(std::sin));
+}
+
+NdArray Cos(const NdArray& x) {
+    return ApplySingleOp(x, static_cast<float (*)(float)>(std::cos));
+}
+
+NdArray Tan(const NdArray& x) {
+    return ApplySingleOp(x, static_cast<float (*)(float)>(std::tan));
+}
+
+// Inverse trigonometric functions
+NdArray ArcSin(const NdArray& x) {
+    return ApplySingleOp(x, static_cast<float (*)(float)>(std::asin));
+}
+
+NdArray ArcCos(const NdArray& x) {
+    return ApplySingleOp(x, static_cast<float (*)(float)>(std::acos));
+}
+
+NdArray ArcTan(const NdArray& x) {
+    return ApplySingleOp(x, static_cast<float (*)(float)>(std::atan));
+}
+
+NdArray ArcTan2(const NdArray& y, const NdArray& x) {
+    return ApplyElemWiseOp(y, x,
+                           static_cast<float (*)(float, float)>(std::atan2));
+}
+
+NdArray ArcTan2(const NdArray& y, float x) {
+    return ApplyElemWiseOp(y, x,
+                           static_cast<float (*)(float, float)>(std::atan2));
+}
+
+NdArray ArcTan2(float y, const NdArray& x) {
+    return ApplyElemWiseOp(y, x,
+                           static_cast<float (*)(float, float)>(std::atan2));
 }
 
 // =============================================================================
