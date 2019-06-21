@@ -136,6 +136,19 @@ TEST_CASE("NdArray") {
         REQUIRE(!IsSameNdArray(m1, m3));
     }
 
+    // ------------------------------ Basic method -----------------------------
+    SECTION("Basic method") {
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m2 = m1.copy();
+        m2.fill(-1);
+        RequireNdArray(m1,
+                       "[[0, 1, 2],\n"
+                       " [3, 4, 5]]");
+        RequireNdArray(m2,
+                       "[[-1, -1, -1],\n"
+                       " [-1, -1, -1]]");
+    }
+
     // ------------------------------- Begin/End -------------------------------
     SECTION("Begin/End") {
         auto m1 = NdArray::Arange(1.f, 10.01f);
@@ -323,7 +336,7 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Slice high-dim") {
-        auto m1 = NdArray::Arange(256).reshape(4, 4, 4, 4);
+        auto m1 = NdArray::Arange(256.f).reshape(4, 4, 4, 4);
         auto m2 = m1.slice({{1, 3}, {1, 3}, {1, 3}, {1, 3}});
         auto m3 = m1.slice({1, 3}, {1, 3}, {1, 3}, {1, 3});
         REQUIRE(m1.shape() == Shape{4, 4, 4, 4});
@@ -352,13 +365,13 @@ TEST_CASE("NdArray") {
     // ------------------------------ Dot product ------------------------------
     SECTION("Dot (empty)") {
         // Empty array
-        auto m1 = NdArray::Arange(0);
+        auto m1 = NdArray::Arange(0.f);
         REQUIRE_THROWS(m1.dot(m1));
     }
 
     SECTION("Dot (scalar)") {
         // Scalar multiply
-        auto m1 = NdArray::Arange(6).reshape(2, 3);
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
         auto m1_a1 = m1.dot(2.f);
         auto m1_a2 = m1.dot(NdArray{2.f});
         auto m1_b = NdArray({2.f}).dot(m1);
@@ -375,21 +388,21 @@ TEST_CASE("NdArray") {
 
     SECTION("Dot (1D, 1D)") {
         // Inner product of vectors
-        auto m1 = NdArray::Arange(3);
+        auto m1 = NdArray::Arange(3.f);
         auto m2 = NdArray::Ones(3);
         float m11 = m1.dot(m1);
         float m12 = m1.dot(m2);
         REQUIRE(m11 == Approx(5.f));
         REQUIRE(m12 == Approx(3.f));
         // Shape mismatch
-        auto m3 = NdArray::Arange(4);
+        auto m3 = NdArray::Arange(4.f);
         REQUIRE_THROWS(m1.dot(m3));
     }
 
     SECTION("Dot (2D, 2D)") {
         // Inner product of 2D matrix
-        auto m1 = NdArray::Arange(6).reshape(2, 3);
-        auto m2 = NdArray::Arange(6).reshape(3, 2);
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m2 = NdArray::Arange(6.f).reshape(3, 2);
         auto m12 = m1.dot(m2);
         RequireNdArray(m12,
                        "[[10, 13],\n"
@@ -400,19 +413,19 @@ TEST_CASE("NdArray") {
 
     SECTION("Dot (2D, 1D)") {
         // Inner product of 2D matrix and vector (2D, 1D)
-        auto m1 = NdArray::Arange(6).reshape(2, 3);
-        auto m2 = NdArray::Arange(3);
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m2 = NdArray::Arange(3.f);
         auto m12 = m1.dot(m2);
         RequireNdArray(m12, "[5, 14]");
         // Shape mismatch
-        auto m3 = NdArray::Arange(2);
+        auto m3 = NdArray::Arange(2.f);
         REQUIRE_THROWS(m1.dot(m3));
     }
 
     SECTION("Dot (ND, 1D)") {
         // Inner product of ND matrix and vector (ND, 1D)
-        auto m1 = NdArray::Arange(12).reshape(2, 2, 3);
-        auto m2 = NdArray::Arange(3);
+        auto m1 = NdArray::Arange(12.f).reshape(2, 2, 3);
+        auto m2 = NdArray::Arange(3.f);
         auto m12 = m1.dot(m2);
         RequireNdArray(m12,
                        "[[5, 14],\n"
@@ -421,9 +434,9 @@ TEST_CASE("NdArray") {
 
     SECTION("Dot (ND, MD)") {
         // Inner product of ND matrix and MD matrix
-        auto m1 = NdArray::Arange(12).reshape(2, 3, 2);
-        auto m2 = NdArray::Arange(6).reshape(2, 3);
-        auto m3 = NdArray::Arange(12).reshape(3, 2, 2);
+        auto m1 = NdArray::Arange(12.f).reshape(2, 3, 2);
+        auto m2 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m3 = NdArray::Arange(12.f).reshape(3, 2, 2);
         auto m12 = m1.dot(m2);
         auto m13 = m1.dot(m3);
         REQUIRE(m12.shape() == Shape{2, 3, 3});
@@ -494,8 +507,8 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Cross (ND, MD), (3, 3 elem)") {
-        auto m1 = NdArray::Arange(18).reshape(3, 2, 3);
-        auto m2 = NdArray::Arange(6).reshape(2, 3) + 1.f;
+        auto m1 = NdArray::Arange(18.f).reshape(3, 2, 3);
+        auto m2 = NdArray::Arange(6.f).reshape(2, 3) + 1.f;
         auto m12 = m1.cross(m2);
         RequireNdArray(m12,
                        "[[[-1, 2, -1],\n"
@@ -507,8 +520,8 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Cross (ND, MD), (3, 2 elem)") {
-        auto m1 = NdArray::Arange(18).reshape(2, 3, 3);
-        auto m2 = NdArray::Arange(6).reshape(3, 2) + 1.f;
+        auto m1 = NdArray::Arange(18.f).reshape(2, 3, 3);
+        auto m2 = NdArray::Arange(6.f).reshape(3, 2) + 1.f;
         auto m12 = m1.cross(m2);
         RequireNdArray(m12,
                        "[[[-4, 2, -1],\n"
@@ -520,8 +533,8 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Cross (ND, MD), (2, 3 elem)") {
-        auto m1 = NdArray::Arange(12).reshape(3, 2, 2);
-        auto m2 = NdArray::Arange(6).reshape(2, 3) + 1.f;
+        auto m1 = NdArray::Arange(12.f).reshape(3, 2, 2);
+        auto m2 = NdArray::Arange(6.f).reshape(2, 3) + 1.f;
         auto m12 = m1.cross(m2);
         RequireNdArray(m12,
                        "[[[3, -0, -1],\n"
@@ -533,8 +546,8 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Cross (ND, MD), (2, 2 elem)") {
-        auto m1 = NdArray::Arange(12).reshape(3, 2, 2);
-        auto m2 = NdArray::Arange(4).reshape(2, 2) + 1.f;
+        auto m1 = NdArray::Arange(12.f).reshape(3, 2, 2);
+        auto m2 = NdArray::Arange(4.f).reshape(2, 2) + 1.f;
         auto m12 = m1.cross(m2);
         RequireNdArray(m12,
                        "[[-1, -1],\n"
@@ -545,8 +558,8 @@ TEST_CASE("NdArray") {
     // ----------------------------- Axis operation ----------------------------
     SECTION("Sum") {
         NdArray m0;
-        auto m1 = NdArray::Arange(6);
-        auto m2 = NdArray::Arange(36).reshape(2, 3, 2, 3);
+        auto m1 = NdArray::Arange(6.f);
+        auto m2 = NdArray::Arange(36.f).reshape(2, 3, 2, 3);
         RequireNdArray(m0.sum(), "[0]");
         RequireNdArray(m1.sum(), "[15]");
         RequireNdArray(m2.sum({0}),
@@ -580,8 +593,8 @@ TEST_CASE("NdArray") {
 
     SECTION("Min") {
         NdArray m0;
-        auto m1 = NdArray::Arange(6) - 3.f;
-        auto m2 = NdArray::Arange(12).reshape(2, 3, 2) - 6.f;
+        auto m1 = NdArray::Arange(6.f) - 3.f;
+        auto m2 = NdArray::Arange(12.f).reshape(2, 3, 2) - 6.f;
         REQUIRE_THROWS(m0.min());
         RequireNdArray(m1.min(), "[-3]");
         RequireNdArray(m2.min({0}),
@@ -596,8 +609,8 @@ TEST_CASE("NdArray") {
 
     SECTION("Max") {
         NdArray m0;
-        auto m1 = NdArray::Arange(6) - 3.f;
-        auto m2 = NdArray::Arange(12).reshape(2, 3, 2) - 6.f;
+        auto m1 = NdArray::Arange(6.f) - 3.f;
+        auto m2 = NdArray::Arange(12.f).reshape(2, 3, 2) - 6.f;
         REQUIRE_THROWS(m0.max());
         RequireNdArray(m1.max(), "[2]");
         RequireNdArray(m2.max({0}),
@@ -612,8 +625,8 @@ TEST_CASE("NdArray") {
 
     SECTION("Mean") {
         NdArray m0;
-        auto m1 = NdArray::Arange(6) - 3.f;
-        auto m2 = NdArray::Arange(12).reshape(2, 3, 2) - 6.f;
+        auto m1 = NdArray::Arange(6.f) - 3.f;
+        auto m2 = NdArray::Arange(12.f).reshape(2, 3, 2) - 6.f;
         RequireNdArray(m0.mean(), "[nan]");
         RequireNdArray(m1.mean(), "[-0.5]");
         RequireNdArray(m2.mean({0}),
@@ -628,7 +641,7 @@ TEST_CASE("NdArray") {
 
     // ------------------------------- Operator --------------------------------
     SECTION("Add same shape") {
-        auto m1 = NdArray::Arange(12).reshape(2, 3, 2);
+        auto m1 = NdArray::Arange(12.f).reshape(2, 3, 2);
         auto m2 = NdArray::Ones({2, 3, 2});
         auto m3 = m1 + m2;
         REQUIRE(m1.shape() == m2.shape());
@@ -643,9 +656,9 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Add broadcast 2-dim") {
-        auto m1 = NdArray::Arange(6).reshape(2, 3);
-        auto m2 = NdArray::Arange(2).reshape(2, 1);
-        auto m3 = NdArray::Arange(3).reshape(1, 3);
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m2 = NdArray::Arange(2.f).reshape(2, 1);
+        auto m3 = NdArray::Arange(3.f).reshape(1, 3);
         auto m12 = m1 + m2;
         auto m13 = m1 + m3;
         auto m23 = m2 + m3;
@@ -664,9 +677,9 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Add broadcast high-dim") {
-        auto m1 = NdArray::Arange(6).reshape(1, 2, 1, 1, 3);
-        auto m2 = NdArray::Arange(2).reshape(2, 1);
-        auto m3 = NdArray::Arange(3).reshape(1, 3);
+        auto m1 = NdArray::Arange(6.f).reshape(1, 2, 1, 1, 3);
+        auto m2 = NdArray::Arange(2.f).reshape(2, 1);
+        auto m3 = NdArray::Arange(3.f).reshape(1, 3);
         auto m12 = m1 + m2;
         auto m13 = m1 + m3;
         REQUIRE(m12.shape() == Shape{1, 2, 1, 2, 3});
@@ -682,8 +695,8 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Sub/Mul/Div") {
-        auto m1 = NdArray::Arange(6).reshape(2, 3);
-        auto m2 = NdArray::Arange(3).reshape(3);
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m2 = NdArray::Arange(3.f).reshape(3);
         auto m_sub = m1 - m2;
         auto m_mul = m1 * m2;
         auto m_div = m1 / m2;
@@ -704,7 +717,7 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Arithmetic operators (ndarray, float)") {
-        auto m1 = NdArray::Arange(6).reshape(2, 3);
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
         auto m_add = m1 + 10.f;
         auto m_sub = m1 - 10.f;
         auto m_mul = m1 * 10.f;
@@ -724,7 +737,7 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Arithmetic operators (float, ndarray)") {
-        auto m1 = NdArray::Arange(6).reshape(2, 3);
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
         auto m_add = 10.f + m1;
         auto m_sub = 10.f - m1;
         auto m_mul = 10.f * m1;
@@ -744,7 +757,7 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Single +- operators") {
-        auto m1 = NdArray::Arange(6).reshape(2, 3);
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
         auto m_p = +m1;
         auto m_n = -m1;
         RequireNdArray(m_p,
@@ -757,8 +770,8 @@ TEST_CASE("NdArray") {
 
     // --------------------------- Operator function ---------------------------
     SECTION("Function Arithmetic (NdArray, NdArray)") {
-        auto m1 = NdArray::Arange(6).reshape(2, 3);
-        auto m2 = NdArray::Arange(3);
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m2 = NdArray::Arange(3.f);
         auto m_add = Add(m1, m2);
         auto m_sub = Subtract(m1, m2);
         auto m_mul = Multiply(m1, m2);
@@ -780,7 +793,7 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Function Arithmetic (NdArray, float)") {
-        auto m1 = NdArray::Arange(3);
+        auto m1 = NdArray::Arange(3.f);
         auto m_add = Add(m1, 2.f);
         auto m_sub = Subtract(m1, 2.f);
         auto m_mul = Multiply(m1, 2.f);
@@ -792,7 +805,7 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Function Arithmetic (float, NdArray)") {
-        auto m1 = NdArray::Arange(3);
+        auto m1 = NdArray::Arange(3.f);
         auto m_add = Add(2.f, m1);
         auto m_sub = Subtract(2.f, m1);
         auto m_mul = Multiply(2.f, m1);
@@ -804,8 +817,8 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Function Dot") {
-        auto m1 = NdArray::Arange(6).reshape(2, 3);
-        auto m2 = NdArray::Arange(3);
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m2 = NdArray::Arange(3.f);
         auto m12 = Dot(m1, m2);
         auto m_a = Dot(m2, 2.f);
         auto m_b = Dot(2.f, m2);
@@ -822,8 +835,8 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Function Basic Math") {
-        auto m1 = NdArray::Arange(3);
-        auto m2 = NdArray::Arange(7) / 3.f - 1.f;
+        auto m1 = NdArray::Arange(3.f);
+        auto m2 = NdArray::Arange(7.f) / 3.f - 1.f;
         RequireNdArray(-m1, "[-0, -1, -2]");
         RequireNdArray(Abs(-m1), "[0, 1, 2]");
         RequireNdArray(Ceil(m2), "[-1, -0, -0, 0, 1, 1, 1]");
@@ -837,7 +850,7 @@ TEST_CASE("NdArray") {
     }
 
     SECTION("Function Trigonometric") {
-        auto m1 = NdArray::Arange(3);
+        auto m1 = NdArray::Arange(3.f);
         RequireNdArray(Sin(m1), "[0, 0.841471, 0.909297]");
         RequireNdArray(Cos(m1), "[1, 0.540302, -0.416147]");
         RequireNdArray(Tan(m1), "[0, 1.55741, -2.18504]");

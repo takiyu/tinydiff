@@ -95,6 +95,8 @@ public:
     const Shape& shape() const;
     float* data();
     const float* data() const;
+    void fill(float v);
+    NdArray copy() const;
 
     float* begin();
     float* end();
@@ -1056,7 +1058,7 @@ NdArray::NdArray(const Shape& shape) {
 
 NdArray::NdArray(const Shape& shape, float fill_v) : NdArray(shape) {
     // Fill after empty initialization
-    std::fill_n(m_sub->v.get(), m_sub->size, fill_v);
+    fill(fill_v);
 }
 
 // ------------------------------- Static Methods ------------------------------
@@ -1152,6 +1154,24 @@ float* NdArray::data() {
 
 const float* NdArray::data() const {
     return m_sub->v.get();
+}
+
+void NdArray::fill(float v) {
+    std::fill_n(m_sub->v.get(), m_sub->size, v);
+}
+
+NdArray NdArray::copy() const {
+    // Create new substance
+    auto sub = std::make_shared<Substance>(m_sub->size, m_sub->shape);
+    // Copy array data
+    float* dst_data = sub->v.get();
+    const float* src_data = m_sub->v.get();
+    const int size = m_sub->size;
+    for (int i = 0; i < size; i++) {
+        *(dst_data++) = *(src_data++);
+    }
+    // Create new array
+    return NdArray(sub);
 }
 
 // ----------------------------- Begin/End Methods -----------------------------
