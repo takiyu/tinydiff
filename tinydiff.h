@@ -226,6 +226,7 @@ public:
 
     NdArray data() const;
     NdArray grad() const;
+    void cleargrads();
     void backward();
 
     void setCreator(Function f);
@@ -965,6 +966,12 @@ static std::vector<NdArray> GetGrads(const Variables& src) {
         ret.emplace_back(s_elem.grad());
     }
     return ret;
+}
+
+static void ClearGrads(Variables& src) {
+    for (auto&& s_elem : src) {
+        s_elem.cleargrads();
+    }
 }
 
 // =============================================================================
@@ -1826,6 +1833,10 @@ NdArray Variable::grad() const {
     return m_sub->grad;
 }
 
+void Variable::cleargrads() {
+    m_sub->grad = NdArray({0.f});
+}
+
 void Variable::backward() {
     // Set the last gradients 'one'
     for (auto&& output : m_sub->creator.getOutputs()) {
@@ -1867,6 +1878,8 @@ void Variable::backward() {
         }
         // Remove chain (set rank 0)
         last_func.clear();
+        // Remove used gradient
+        ClearGrads(outputs);
     }
 }
 
