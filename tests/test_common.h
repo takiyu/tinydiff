@@ -697,6 +697,14 @@ TEST_CASE("NdArray") {
                        "  [[[3, 5, 7]]]]]");
     }
 
+    SECTION("Add empty") {
+        NdArray m1;
+        auto m2 = m1 + 1.f;
+        REQUIRE(m1.shape() == Shape{0});
+        REQUIRE(m2.shape() == Shape{0});
+        REQUIRE(m2.size() == 0);
+    }
+
     SECTION("Sub/Mul/Div") {
         auto m1 = NdArray::Arange(6.f).reshape(2, 3);
         auto m2 = NdArray::Arange(3.f).reshape(3);
