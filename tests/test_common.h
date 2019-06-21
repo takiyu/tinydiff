@@ -283,6 +283,12 @@ TEST_CASE("NdArray") {
         REQUIRE_THROWS(m1.reshape({-1, -1}));
     }
 
+    SECTION("Flatten") {
+        auto m1 = NdArray::Arange(12.f).reshape(2, 2, 3);
+        auto m2 = m1.flatten();
+        RequireNdArray(m2, "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]");
+    }
+
     // --------------------------------- Slice ---------------------------------
     SECTION("Slice 2-dim") {
         auto m1 = NdArray::Arange(16.f).reshape(4, 4);

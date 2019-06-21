@@ -116,6 +116,7 @@ public:
     NdArray reshape(const Shape& shape) const;
     template <typename... S>
     NdArray reshape(S... shape) const;
+    NdArray flatten() const;
 
     NdArray slice(const SliceIndex& slice_index) const;
     template <typename... I>
@@ -1268,6 +1269,10 @@ template <typename... S>
 NdArray NdArray::reshape(S... shape) const {
     // Pass to `reshape(Shape)`
     return reshape({shape...});
+}
+
+NdArray NdArray::flatten() const {
+    return reshape({-1});
 }
 
 // -------------------------------- Slice Method -------------------------------
