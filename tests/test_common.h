@@ -870,14 +870,16 @@ TEST_CASE("NdArray") {
         RequireNdArray(ArcTan2(2.f, m1), "[2.03444, 1.5708, 1.10715]");
     }
 
-    //     SECTION("Function Axis") {
-    //         auto m1 = NdArray::Arange(6);
-    //         auto m2 = NdArray::Arange(24).reshape(2, 3, 2, 3);
-    //         std::cout << Sum(m1) << std::endl;
-    //         std::cout << Sum(m2, {0}) << std::endl;
-    //         std::cout << Sum(m2, {2}) << std::endl;
-    //         std::cout << Sum(m2, {1, 2}) << std::endl;
-    //     }
+    SECTION("Function Axis") {
+        auto m1 = NdArray::Arange(36.f).reshape(2, 3, 2, 3);
+        RequireNdArray(Sum(m1, {1, 3}),
+                       "[[63, 90],\n"
+                       " [225, 252]]");
+        auto m2 = NdArray::Arange(12.f).reshape(2, 3, 2) - 6.f;
+        RequireNdArray(Min(m2, {2, 1}), "[-6, 0]");
+        RequireNdArray(Max(m2, {2, 1}), "[-1, 5]");
+        RequireNdArray(Mean(m2, {2, 1}), "[-3.5, 2.5]");
+    }
 }
 
 TEST_CASE("AutoGrad") {
