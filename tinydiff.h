@@ -224,13 +224,14 @@ NdArray Mean(const NdArray& x, const Axes& axes = {});
 class Variable {
 public:
     Variable();
-    Variable(float v);
-    Variable(const NdArray& v);
     Variable(const Variable&);
     Variable(Variable&&);
     Variable& operator=(const Variable&);
     Variable& operator=(Variable&&);
     ~Variable();
+
+    Variable(float v);
+    Variable(const NdArray& v);
 
     NdArray data() const;
     NdArray grad() const;
@@ -1883,10 +1884,6 @@ Variable::Variable() : m_sub(std::make_shared<Substance>()) {}
 
 Variable::Variable(std::shared_ptr<Substance> sub) : m_sub(sub) {}
 
-Variable::Variable(float v) : m_sub(std::make_shared<Substance>(v)) {}
-
-Variable::Variable(const NdArray& v) : m_sub(std::make_shared<Substance>(v)) {}
-
 Variable::Variable(const Variable& lhs) = default;  // shallow copy
 
 Variable::Variable(Variable&&) = default;  // move
@@ -1901,12 +1898,16 @@ Variable::~Variable() = default;
 class Variable::Substance {
 public:
     Substance() {}
-    Substance(float v_) : v({v_}) {}
     Substance(const NdArray& v_) : v(v_) {}
     NdArray v;
     NdArray grad = {0.f};
     Function creator;
 };
+
+// ------------------------------- Constructors --------------------------------
+Variable::Variable(float v) : m_sub(std::make_shared<Substance>(NdArray{v})) {}
+
+Variable::Variable(const NdArray& v) : m_sub(std::make_shared<Substance>(v)) {}
 
 // ---------------------------------- Methods ----------------------------------
 NdArray Variable::data() const {
