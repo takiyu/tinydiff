@@ -150,6 +150,9 @@ TEST_CASE("NdArray") {
                        " [-1, -1, -1]]");
         REQUIRE(m1.ndim() == 2);
         REQUIRE(m1.flatten().ndim() == 1);
+        REQUIRE(m1.flatten().id() != m1.id());  // Copy
+        REQUIRE(m1.ravel().ndim() == 1);
+        REQUIRE(m1.ravel().id() == m1.id());  // Same instance
     }
 
     // ------------------------------- Begin/End -------------------------------

@@ -90,6 +90,7 @@ public:
                           const Shape& shape = {1});
     static NdArray Normal(const Shape& shape);
 
+    uintptr_t id() const;
     bool empty() const;
     size_t size() const;
     const Shape& shape() const;
@@ -119,7 +120,8 @@ public:
     NdArray reshape(const Shape& shape) const;
     template <typename... S>
     NdArray reshape(S... shape) const;
-    NdArray flatten() const;
+    NdArray flatten() const;  // with copy
+    NdArray ravel() const;    // without copy
 
     NdArray slice(const SliceIndex& slice_index) const;
     template <typename... I>
@@ -1197,6 +1199,10 @@ NdArray NdArray::Normal(const Shape& shape) {
 }
 
 // ------------------------------- Basic Methods -------------------------------
+uintptr_t NdArray::id() const {
+    return reinterpret_cast<uintptr_t>(m_sub->v.get());  // pointer of array
+}
+
 bool NdArray::empty() const {
     return m_sub->size == 0;
 }
@@ -1357,6 +1363,10 @@ NdArray NdArray::reshape(S... shape) const {
 }
 
 NdArray NdArray::flatten() const {
+    return reshape({-1}).copy();
+}
+
+NdArray NdArray::ravel() const {
     return reshape({-1});
 }
 
