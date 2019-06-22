@@ -846,6 +846,18 @@ TEST_CASE("NdArray") {
         RequireNdArray(m1 != m2,
                        "[[1, 1, 1],\n"
                        " [1, 0, 1]]");
+        RequireNdArray(m1 > m2,
+                       "[[0, 0, 0],\n"
+                       " [0, 0, 1]]");
+        RequireNdArray(m1 >= m2,
+                       "[[0, 0, 0],\n"
+                       " [0, 1, 1]]");
+        RequireNdArray(m1 < m2,
+                       "[[1, 1, 1],\n"
+                       " [1, 0, 0]]");
+        RequireNdArray(m1 <= m2,
+                       "[[1, 1, 1],\n"
+                       " [1, 1, 0]]");
     }
 
     SECTION("Comparison operators (ndarray, float)") {
@@ -856,6 +868,18 @@ TEST_CASE("NdArray") {
         RequireNdArray(m1 != 1.f,
                        "[[1, 0, 1],\n"
                        " [1, 1, 1]]");
+        RequireNdArray(m1 > 1.f,
+                       "[[0, 0, 1],\n"
+                       " [1, 1, 1]]");
+        RequireNdArray(m1 >= 1.f,
+                       "[[0, 1, 1],\n"
+                       " [1, 1, 1]]");
+        RequireNdArray(m1 < 1.f,
+                       "[[1, 0, 0],\n"
+                       " [0, 0, 0]]");
+        RequireNdArray(m1 <= 1.f,
+                       "[[1, 1, 0],\n"
+                       " [0, 0, 0]]");
     }
 
     SECTION("Comparison operators (float, ndarray)") {
@@ -865,6 +889,18 @@ TEST_CASE("NdArray") {
                        " [0, 0, 0]]");
         RequireNdArray(1.f != m1,
                        "[[1, 0, 1],\n"
+                       " [1, 1, 1]]");
+        RequireNdArray(1.f > m1,
+                       "[[1, 0, 0],\n"
+                       " [0, 0, 0]]");
+        RequireNdArray(1.f >= m1,
+                       "[[1, 1, 0],\n"
+                       " [0, 0, 0]]");
+        RequireNdArray(1.f < m1,
+                       "[[0, 0, 1],\n"
+                       " [1, 1, 1]]");
+        RequireNdArray(1.f <= m1,
+                       "[[0, 1, 1],\n"
                        " [1, 1, 1]]");
     }
 
@@ -976,6 +1012,29 @@ TEST_CASE("NdArray") {
         RequireNdArray(Min(m2, {2, 1}), "[-6, 0]");
         RequireNdArray(Max(m2, {2, 1}), "[-1, 5]");
         RequireNdArray(Mean(m2, {2, 1}), "[-3.5, 2.5]");
+    }
+
+    SECTION("Function Comparison") {
+        auto m1 = NdArray::Arange(3.f);
+        auto m2 = NdArray::Zeros(1) + 1.f;
+        RequireNdArray(Equal(m1, m2), "[0, 1, 0]");
+        RequireNdArray(NotEqual(m1, m2), "[1, 0, 1]");
+        RequireNdArray(Greater(m1, m2), "[0, 0, 1]");
+        RequireNdArray(GreaterEqual(m1, m2), "[0, 1, 1]");
+        RequireNdArray(Less(m1, m2), "[1, 0, 0]");
+        RequireNdArray(LessEqual(m1, m2), "[1, 1, 0]");
+        RequireNdArray(Equal(m1, 1.f), "[0, 1, 0]");
+        RequireNdArray(NotEqual(m1, 1.f), "[1, 0, 1]");
+        RequireNdArray(Greater(m1, 1.f), "[0, 0, 1]");
+        RequireNdArray(GreaterEqual(m1, 1.f), "[0, 1, 1]");
+        RequireNdArray(Less(m1, 1.f), "[1, 0, 0]");
+        RequireNdArray(LessEqual(m1, 1.f), "[1, 1, 0]");
+        RequireNdArray(Equal(1.f, m1), "[0, 1, 0]");
+        RequireNdArray(NotEqual(1.f, m1), "[1, 0, 1]");
+        RequireNdArray(Greater(1.f, m1), "[1, 0, 0]");
+        RequireNdArray(GreaterEqual(1.f, m1), "[1, 1, 0]");
+        RequireNdArray(Less(1.f, m1), "[0, 0, 1]");
+        RequireNdArray(LessEqual(1.f, m1), "[0, 1, 1]");
     }
 }
 

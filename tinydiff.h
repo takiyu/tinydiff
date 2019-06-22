@@ -173,10 +173,22 @@ NdArray operator+(const NdArray& x);
 NdArray operator-(const NdArray& x);
 NdArray operator==(const NdArray& lhs, const NdArray& rhs);
 NdArray operator!=(const NdArray& lhs, const NdArray& rhs);
+NdArray operator>(const NdArray& lhs, const NdArray& rhs);
+NdArray operator>=(const NdArray& lhs, const NdArray& rhs);
+NdArray operator<(const NdArray& lhs, const NdArray& rhs);
+NdArray operator<=(const NdArray& lhs, const NdArray& rhs);
 NdArray operator==(const NdArray& lhs, float rhs);
 NdArray operator!=(const NdArray& lhs, float rhs);
+NdArray operator>(const NdArray& lhs, float rhs);
+NdArray operator>=(const NdArray& lhs, float rhs);
+NdArray operator<(const NdArray& lhs, float rhs);
+NdArray operator<=(const NdArray& lhs, float rhs);
 NdArray operator==(float lhs, const NdArray& rhs);
 NdArray operator!=(float lhs, const NdArray& rhs);
+NdArray operator>(float lhs, const NdArray& rhs);
+NdArray operator>=(float lhs, const NdArray& rhs);
+NdArray operator<(float lhs, const NdArray& rhs);
+NdArray operator<=(float lhs, const NdArray& rhs);
 
 // ---------------------------- Operator Functions -----------------------------
 // Arithmetic operators (NdArray, NdArray)
@@ -228,10 +240,22 @@ NdArray Mean(const NdArray& x, const Axes& axes = {});
 // Comparison operators
 NdArray Equal(const NdArray& lhs, const NdArray& rhs);
 NdArray NotEqual(const NdArray& lhs, const NdArray& rhs);
+NdArray Greater(const NdArray& lhs, const NdArray& rhs);      // >
+NdArray GreaterEqual(const NdArray& lhs, const NdArray& rhs); // >=
+NdArray Less(const NdArray& lhs, const NdArray& rhs);         // <
+NdArray LessEqual(const NdArray& lhs, const NdArray& rhs);    // <=
 NdArray Equal(const NdArray& lhs, float rhs);
 NdArray NotEqual(const NdArray& lhs, float rhs);
+NdArray Greater(const NdArray& lhs, float rhs);
+NdArray GreaterEqual(const NdArray& lhs, float rhs);
+NdArray Less(const NdArray& lhs, float rhs);
+NdArray LessEqual(const NdArray& lhs, float rhs);
 NdArray Equal(float lhs, const NdArray& rhs);
 NdArray NotEqual(float lhs, const NdArray& rhs);
+NdArray Greater(float lhs, const NdArray& rhs);
+NdArray GreaterEqual(float lhs, const NdArray& rhs);
+NdArray Less(float lhs, const NdArray& rhs);
+NdArray LessEqual(float lhs, const NdArray& rhs);
 
 // =============================================================================
 // ================================== Variable =================================
@@ -1734,6 +1758,22 @@ NdArray operator!=(const NdArray& lhs, const NdArray& rhs) {
     return NotEqual(lhs, rhs);
 }
 
+NdArray operator>(const NdArray& lhs, const NdArray& rhs) {
+    return Greater(lhs, rhs);
+}
+
+NdArray operator>=(const NdArray& lhs, const NdArray& rhs) {
+    return GreaterEqual(lhs, rhs);
+}
+
+NdArray operator<(const NdArray& lhs, const NdArray& rhs) {
+    return Less(lhs, rhs);
+}
+
+NdArray operator<=(const NdArray& lhs, const NdArray& rhs) {
+    return LessEqual(lhs, rhs);
+}
+
 NdArray operator==(const NdArray& lhs, float rhs) {
     return Equal(lhs, rhs);
 }
@@ -1742,12 +1782,44 @@ NdArray operator!=(const NdArray& lhs, float rhs) {
     return NotEqual(lhs, rhs);
 }
 
+NdArray operator>(const NdArray& lhs, float rhs) {
+    return Greater(lhs, rhs);
+}
+
+NdArray operator>=(const NdArray& lhs, float rhs) {
+    return GreaterEqual(lhs, rhs);
+}
+
+NdArray operator<(const NdArray& lhs, float rhs) {
+    return Less(lhs, rhs);
+}
+
+NdArray operator<=(const NdArray& lhs, float rhs) {
+    return LessEqual(lhs, rhs);
+}
+
 NdArray operator==(float lhs, const NdArray& rhs) {
     return Equal(lhs, rhs);
 }
 
 NdArray operator!=(float lhs, const NdArray& rhs) {
     return NotEqual(lhs, rhs);
+}
+
+NdArray operator>(float lhs, const NdArray& rhs) {
+    return Greater(lhs, rhs);
+}
+
+NdArray operator>=(float lhs, const NdArray& rhs) {
+    return GreaterEqual(lhs, rhs);
+}
+
+NdArray operator<(float lhs, const NdArray& rhs) {
+    return Less(lhs, rhs);
+}
+
+NdArray operator<=(float lhs, const NdArray& rhs) {
+    return LessEqual(lhs, rhs);
 }
 
 // ---------------------------- Operator Functions -----------------------------
@@ -1926,27 +1998,75 @@ NdArray Mean(const NdArray& x, const Axes& axes) {
 
 // Comparison operators
 NdArray Equal(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, [](float a, float b) { return a == b; } );
+    return ApplyElemWiseOp(lhs, rhs, std::equal_to<float>());
 }
 
 NdArray NotEqual(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, [](float a, float b) { return a != b; } );
+    return ApplyElemWiseOp(lhs, rhs, std::not_equal_to<float>());
+}
+
+NdArray Greater(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::greater<float>());
+}
+
+NdArray GreaterEqual(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::greater_equal<float>());
+}
+
+NdArray Less(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::less<float>());
+}
+
+NdArray LessEqual(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::less_equal<float>());
 }
 
 NdArray Equal(const NdArray& lhs, float rhs) {
-    return ApplyElemWiseOp(lhs, rhs, [](float a, float b) { return a == b; } );
+    return ApplyElemWiseOp(lhs, rhs, std::equal_to<float>());
 }
 
 NdArray NotEqual(const NdArray& lhs, float rhs) {
-    return ApplyElemWiseOp(lhs, rhs, [](float a, float b) { return a != b; } );
+    return ApplyElemWiseOp(lhs, rhs, std::not_equal_to<float>());
+}
+
+NdArray Greater(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::greater<float>());
+}
+
+NdArray GreaterEqual(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::greater_equal<float>());
+}
+
+NdArray Less(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::less<float>());
+}
+
+NdArray LessEqual(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::less_equal<float>());
 }
 
 NdArray Equal(float lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, [](float a, float b) { return a == b; } );
+    return ApplyElemWiseOp(lhs, rhs, std::equal_to<float>());
 }
 
 NdArray NotEqual(float lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, [](float a, float b) { return a != b; } );
+    return ApplyElemWiseOp(lhs, rhs, std::not_equal_to<float>());
+}
+
+NdArray Greater(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::greater<float>());
+}
+
+NdArray GreaterEqual(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::greater_equal<float>());
+}
+
+NdArray Less(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::less<float>());
+}
+
+NdArray LessEqual(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::less_equal<float>());
 }
 
 // =============================================================================
