@@ -260,6 +260,31 @@ NdArray Min(const NdArray& x, const Axes& axes = {});
 NdArray Max(const NdArray& x, const Axes& axes = {});
 NdArray Mean(const NdArray& x, const Axes& axes = {});
 // ------------------------ In-place Operator Functions ------------------------
+// Basic math operators
+NdArray Abs(NdArray&& x);
+NdArray Ceil(NdArray&& x);
+NdArray Floor(NdArray&& x);
+NdArray Sqrt(NdArray&& x);
+NdArray Exp(NdArray&& x);
+NdArray Log(NdArray&& x);
+NdArray Power(NdArray&& x, NdArray&& y);
+NdArray Power(const NdArray& x, NdArray&& y);
+NdArray Power(NdArray&& x, const NdArray& y);
+NdArray Power(NdArray&& x, float y);
+NdArray Power(float x, NdArray&& y);
+// Trigonometric functions
+NdArray Sin(NdArray&& x);
+NdArray Cos(NdArray&& x);
+NdArray Tan(NdArray&& x);
+// Inverse trigonometric functions
+NdArray ArcSin(NdArray&& x);
+NdArray ArcCos(NdArray&& x);
+NdArray ArcTan(NdArray&& x);
+NdArray ArcTan2(NdArray&& y, NdArray&& x);
+NdArray ArcTan2(const NdArray& y, NdArray&& x);
+NdArray ArcTan2(NdArray&& y, const NdArray& x);
+NdArray ArcTan2(NdArray&& y, float x);
+NdArray ArcTan2(float y, NdArray&& x);
 
 // =============================================================================
 // ================================== Variable =================================
@@ -355,8 +380,55 @@ Variable exp(Variable x);
 // --------------------------- Utilities for NdArray ---------------------------
 // -----------------------------------------------------------------------------
 template <typename T>
-T clamp(const T& v, const T& lower, const T& upper) {
+T Clamp(const T& v, const T& lower, const T& upper) {
     return std::min(std::max(v, lower), upper);
+}
+
+template <typename F>
+inline auto InverseOp(F op) {
+    return [op](float a, float b) { return op(b, a); };  // Swap left and right
+}
+
+template <typename F>
+inline void ApplyOpSimple(NdArray& ret, F op) {
+    float* ret_data = ret.data();
+    // Simply apply all
+    for (size_t i = 0; i < ret.size(); i++) {
+        *(ret_data++) = op();
+    }
+}
+
+template <typename F>
+inline void ApplyOpSimple(NdArray& ret, const NdArray& src, F op) {
+    float* ret_data = ret.data();
+    const float* src_data = src.data();
+    // Simply apply all
+    for (size_t i = 0; i < ret.size(); i++) {
+        *(ret_data++) = op(*(src_data++));
+    }
+}
+
+template <typename F>
+inline void ApplyOpSimple(NdArray& ret, const NdArray& lhs, const NdArray& rhs,
+                          F op) {
+    float* ret_data = ret.data();
+    const float* l_data = lhs.data();
+    const float* r_data = rhs.data();
+    // Simply apply all
+    for (size_t i = 0; i < ret.size(); i++) {
+        *(ret_data++) = op(*(l_data++), *(r_data++));
+    }
+}
+
+template <typename F>
+inline void ApplyOpSimple(NdArray& ret, const NdArray& lhs, const float rhs,
+                          F op) {
+    float* ret_data = ret.data();
+    const float* l_data = lhs.data();
+    // Simply apply all
+    for (size_t i = 0; i < ret.size(); i++) {
+        *(ret_data++) = op(*(l_data++), rhs);
+    }
 }
 
 static std::vector<int> ComputeChildSizes(const Shape& shape) {
@@ -435,10 +507,7 @@ NdArray CreateRandomArray(const Shape& shape, D&& dist, R&& rand_engine) {
     // Create empty array
     NdArray ret(shape);
     // Fill by random value
-    float* data = ret.data();
-    for (size_t i = 0; i < ret.size(); i++) {
-        *(data++) = static_cast<float>(dist(rand_engine));
-    }
+    ApplyOpSimple(ret, [&]() { return static_cast<float>(dist(rand_engine)); });
     return ret;
 }
 
@@ -487,6 +556,20 @@ static std::pair<int, int> CvtToSliceIndexItem(std::initializer_list<int> l) {
         throw std::runtime_error("Invalid slice index format");
     }
     return {*l.begin(), *(l.begin() + 1)};
+}
+
+// ------------------ Utilities for NdArray (Single operator) ------------------
+template <typename F>
+static NdArray ApplySingleOp(const NdArray& x, F op) {
+    NdArray ret(x.shape());
+    ApplyOpSimple(ret, x, op);
+    return ret;
+}
+
+template <typename F>
+static NdArray ApplySingleOpInplace(NdArray&& x, F op) {
+    ApplyOpSimple(x, x, op);
+    return x;
 }
 
 // ------------------ Utilities for NdArray (Broadcast common) -----------------
@@ -571,8 +654,9 @@ static void ApplyOpBroadcastImpl(float* ret_data, const float* l_data,
 }
 
 template <typename F>
-static void ApplyOpBroadcast(const NdArray& lhs, const NdArray& rhs,
-                             NdArray& ret, const size_t depth_offset, F op) {
+static void ApplyOpBroadcast(NdArray& ret, const NdArray& lhs,
+                             const NdArray& rhs, const size_t depth_offset,
+                             F op) {
     const Shape& ret_shape = ret.shape();
 
     // Pre-compute padded shape
@@ -596,66 +680,65 @@ static NdArray ApplyElemWiseOp(const NdArray& lhs, const NdArray& rhs, F op) {
     if (lhs.shape() == rhs.shape()) {
         // Apply without broadcast because of same size for speed up.
         NdArray ret(lhs.shape());
-        float* ret_data = ret.data();
-        const float* l_data = lhs.data();
-        const float* r_data = rhs.data();
         // Simply apply all
-        for (size_t i = 0; i < ret.size(); i++) {
-            *(ret_data++) = op(*(l_data++), *(r_data++));
-        }
+        ApplyOpSimple(ret, lhs, rhs, op);
         return ret;
     } else {
         // Check it is possible to broadcast
         const Shape& ret_shape = CheckBroadcastable(lhs.shape(), rhs.shape());
-        // Wrap operator `float(float, float)` for pointer.
-        auto wrapped_op = [&](float* o, const float* l, const float* r) {
-            *o = op(*l, *r);
-        };
         // Apply broadcast
         NdArray ret(ret_shape);
-        ApplyOpBroadcast(lhs, rhs, ret, 0, wrapped_op);
+        ApplyOpBroadcast(ret, lhs, rhs, 0,
+                         [&](float* o, const float* l, const float* r) {
+                             *o = op(*l, *r);  // wrap for pointer operation
+                         });
         return ret;
     }
 }
 
 template <typename F>
-static NdArray ApplyElemWiseOp(const NdArray& lhs, const float& rhs, F op) {
+static NdArray ApplyElemWiseOp(const NdArray& lhs, const float rhs, F op) {
     // Broadcast right float
     NdArray ret(lhs.shape());
-    const float* l_data = lhs.data();
-    float* ret_data = ret.data();
     // Simply apply all
-    for (size_t i = 0; i < ret.size(); i++) {
-        *(ret_data++) = op(*(l_data++), rhs);
-    }
+    ApplyOpSimple(ret, lhs, rhs, op);
     return ret;
 }
 
 template <typename F>
-static NdArray ApplyElemWiseOp(const float& lhs, const NdArray& rhs, F op) {
-    // Broadcast left float
-    NdArray ret(rhs.shape());
-    const float* r_data = rhs.data();
-    float* ret_data = ret.data();
-    // Simply apply all
-    for (size_t i = 0; i < ret.size(); i++) {
-        *(ret_data++) = op(lhs, *(r_data++));
-    }
-    return ret;
+static NdArray ApplyElemWiseOp(const float lhs, const NdArray& rhs, F op) {
+    // Swap left and right
+    return ApplyElemWiseOp(rhs, lhs, InverseOp(op));
 }
 
 // ---------- Utilities for NdArray (Broadcast element-wise in-place) ----------
 template <typename F>
-static NdArray ApplyElemWiseOpInplcace(NdArray& lhs, const NdArray& rhs, F op) {
+static NdArray ApplyElemWiseOpInplace(NdArray&& lhs, NdArray&& rhs, F op) {
     if (lhs.shape() == rhs.shape()) {
         // Apply without broadcast because of same size for speed up.
-        float* l_data = lhs.data();
-        const float* r_data = rhs.data();
-        // Simply apply all
-        for (size_t i = 0; i < lhs.size(); i++) {
-            *l_data = op(*l_data, *(r_data++));
-            l_data++;
-        }
+        ApplyOpSimple(lhs, lhs, rhs, op);  // Use left as result
+        return lhs;
+    } else {
+        // Check it is possible to broadcast
+        const Shape& ret_shape = CheckBroadcastable(lhs.shape(), rhs.shape());
+        // Select result with shape matching
+        NdArray&& ret = (ret_shape == lhs.shape()) ? lhs :          // left
+                                (ret_shape == rhs.shape()) ? rhs :  // right
+                                        NdArray(ret_shape);  // new instance
+        // Apply broadcast
+        ApplyOpBroadcast(ret, lhs, rhs, 0,
+                         [&](float* o, const float* l, const float* r) {
+                             *o = op(*l, *r);  // wrap for pointer operation
+                         });
+        return ret;
+    }
+}
+
+template <typename F>
+static NdArray ApplyElemWiseOpInplace(NdArray&& lhs, const NdArray& rhs, F op) {
+    if (lhs.shape() == rhs.shape()) {
+        // Apply without broadcast because of same size for speed up.
+        ApplyOpSimple(lhs, lhs, rhs, op);
         return lhs;
     } else {
         // Check it is possible to broadcast
@@ -663,38 +746,33 @@ static NdArray ApplyElemWiseOpInplcace(NdArray& lhs, const NdArray& rhs, F op) {
         if (ret_shape != lhs.shape()) {
             throw std::runtime_error("Invalid shape for in-place operation");
         }
-        // Wrap operator `float(float, float)` for pointer.
-        auto wrapped_op = [&](float* o, const float* l, const float* r) {
-            *o = op(*l, *r);
-        };
         // Apply broadcast (result matrix is lhs)
-        ApplyOpBroadcast(lhs, rhs, lhs, 0, wrapped_op);
+        ApplyOpBroadcast(lhs, lhs, rhs, 0,
+                         [&](float* o, const float* l, const float* r) {
+                             *o = op(*l, *r);  // wrap for pointer operation
+                         });
         return lhs;
     }
 }
 
 template <typename F>
-static NdArray ApplyElemWiseOpInplcace(NdArray& lhs, float rhs, F op) {
+static NdArray ApplyElemWiseOpInplace(const NdArray& lhs, NdArray&& rhs, F op) {
+    // Swap left and right
+    return ApplyElemWiseOpInplace(std::move(rhs), lhs, InverseOp(op));
+}
+
+template <typename F>
+static NdArray ApplyElemWiseOpInplace(NdArray&& lhs, float rhs, F op) {
     // Broadcast right float
-    float* l_data = lhs.data();
     // Simply apply all
-    for (size_t i = 0; i < lhs.size(); i++) {
-        *l_data = op(*l_data, rhs);
-        l_data++;
-    }
+    ApplyOpSimple(lhs, lhs, rhs, op);
     return lhs;
 }
 
-// ------------- Utilities for NdArray (Broadcast single operator) -------------
 template <typename F>
-static NdArray ApplySingleOp(const NdArray& x, F op) {
-    NdArray ret(x.shape());
-    float* ret_data = ret.data();
-    const float* x_data = x.data();
-    for (size_t i = 0; i < x.size(); i++) {
-        *(ret_data++) = op(*(x_data++));
-    }
-    return ret;
+static NdArray ApplyElemWiseOpInplace(float lhs, NdArray&& rhs, F op) {
+    // Swap left and right
+    return ApplyElemWiseOpInplace(std::move(rhs), lhs, InverseOp(op));
 }
 
 // ------------------- Utilities for NdArray (Axis reduction) ------------------
@@ -1015,7 +1093,7 @@ static NdArray CrossNdArrayNdMd(const NdArray& lhs, const NdArray& rhs,
     ret_shape.push_back(last_size);
     // Apply broadcast
     NdArray ret(ret_shape);
-    ApplyOpBroadcast(lhs, rhs, ret, 1, op);
+    ApplyOpBroadcast(ret, lhs, rhs, 1, op);
     return ret;
 }
 
@@ -1433,8 +1511,8 @@ NdArray NdArray::slice(const SliceIndex& slice_index) const {
             int s = (0 <= si.first) ? si.first : shape[i] + si.first;
             int e = (0 <= si.second) ? si.second : shape[i] + si.second;
             // Clamp
-            s = clamp(s, 0, shape[i] - 1);  // Start must be in range.
-            e = clamp(e, 0, shape[i]);      // End can be next of the last.
+            s = Clamp(s, 0, shape[i] - 1);  // Start must be in range.
+            e = Clamp(e, 0, shape[i]);      // End can be next of the last.
             // Register
             slice_shape.push_back(e - s);
             new_index.push_back({s, e});
@@ -1800,35 +1878,43 @@ NdArray operator<=(float lhs, const NdArray& rhs) {
 
 // ----------------------------- In-place Operators ----------------------------
 NdArray operator+=(NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::plus<float>());
+    return lhs = ApplyElemWiseOpInplace(std::move(lhs), rhs,
+                                        std::plus<float>());
 }
 
 NdArray operator-=(NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::minus<float>());
+    return lhs = ApplyElemWiseOpInplace(std::move(lhs), rhs,
+                                        std::minus<float>());
 }
 
 NdArray operator*=(NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::multiplies<float>());
+    return lhs = ApplyElemWiseOpInplace(std::move(lhs), rhs,
+                                        std::multiplies<float>());
 }
 
 NdArray operator/=(NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::divides<float>());
+    return lhs = ApplyElemWiseOpInplace(std::move(lhs), rhs,
+                                        std::divides<float>());
 }
 
 NdArray operator+=(NdArray& lhs, float rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::plus<float>());
+    return lhs = ApplyElemWiseOpInplace(std::move(lhs), rhs,
+                                        std::plus<float>());
 }
 
 NdArray operator-=(NdArray& lhs, float rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::minus<float>());
+    return lhs = ApplyElemWiseOpInplace(std::move(lhs), rhs,
+                                        std::minus<float>());
 }
 
 NdArray operator*=(NdArray& lhs, float rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::multiplies<float>());
+    return lhs = ApplyElemWiseOpInplace(std::move(lhs), rhs,
+                                        std::multiplies<float>());
 }
 
 NdArray operator/=(NdArray& lhs, float rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::divides<float>());
+    return lhs = ApplyElemWiseOpInplace(std::move(lhs), rhs,
+                                        std::divides<float>());
 }
 
 // ---------------------------- Operator Functions -----------------------------
@@ -2078,6 +2164,122 @@ NdArray Mean(const NdArray& x, const Axes& axes) {
     auto&& sum = Sum(x, axes);
     float denom = x.size() / sum.size();
     return sum / denom;
+}
+
+// ------------------------ In-place Operator Functions ------------------------
+// Basic math operators
+NdArray Abs(NdArray&& x) {
+    return ApplySingleOpInplace(std::move(x),
+                                static_cast<float (*)(float)>(std::abs));
+}
+
+NdArray Ceil(NdArray&& x) {
+    return ApplySingleOpInplace(std::move(x),
+                                static_cast<float (*)(float)>(std::ceil));
+}
+
+NdArray Floor(NdArray&& x) {
+    return ApplySingleOpInplace(std::move(x),
+                                static_cast<float (*)(float)>(std::floor));
+}
+
+NdArray Sqrt(NdArray&& x) {
+    return ApplySingleOpInplace(std::move(x),
+                                static_cast<float (*)(float)>(std::sqrt));
+}
+
+NdArray Exp(NdArray&& x) {
+    return ApplySingleOpInplace(std::move(x),
+                                static_cast<float (*)(float)>(std::exp));
+}
+
+NdArray Log(NdArray&& x) {
+    return ApplySingleOpInplace(std::move(x),
+                                static_cast<float (*)(float)>(std::log));
+}
+
+NdArray Power(NdArray&& x, NdArray&& y) {
+    return ApplyElemWiseOpInplace(
+            std::move(x), std::move(y),
+            static_cast<float (*)(float, float)>(std::pow));
+}
+
+NdArray Power(const NdArray& x, NdArray&& y) {
+    return ApplyElemWiseOpInplace(
+            x, std::move(y), static_cast<float (*)(float, float)>(std::pow));
+}
+
+NdArray Power(NdArray&& x, const NdArray& y) {
+    return ApplyElemWiseOpInplace(
+            std::move(x), y, static_cast<float (*)(float, float)>(std::pow));
+}
+
+NdArray Power(NdArray&& x, float y) {
+    return ApplyElemWiseOpInplace(
+            std::move(x), y, static_cast<float (*)(float, float)>(std::pow));
+}
+
+NdArray Power(float x, NdArray&& y) {
+    return ApplyElemWiseOpInplace(
+            x, std::move(y), static_cast<float (*)(float, float)>(std::pow));
+}
+
+// Trigonometric functions
+NdArray Sin(NdArray&& x) {
+    return ApplySingleOpInplace(std::move(x),
+                                static_cast<float (*)(float)>(std::sin));
+}
+
+NdArray Cos(NdArray&& x) {
+    return ApplySingleOpInplace(std::move(x),
+                                static_cast<float (*)(float)>(std::cos));
+}
+
+NdArray Tan(NdArray&& x) {
+    return ApplySingleOpInplace(std::move(x),
+                                static_cast<float (*)(float)>(std::tan));
+}
+
+// Inverse trigonometric functions
+NdArray ArcSin(NdArray&& x) {
+    return ApplySingleOpInplace(std::move(x),
+                                static_cast<float (*)(float)>(std::asin));
+}
+
+NdArray ArcCos(NdArray&& x) {
+    return ApplySingleOpInplace(std::move(x),
+                                static_cast<float (*)(float)>(std::acos));
+}
+
+NdArray ArcTan(NdArray&& x) {
+    return ApplySingleOpInplace(std::move(x),
+                                static_cast<float (*)(float)>(std::atan));
+}
+
+NdArray ArcTan2(NdArray&& y, NdArray&& x) {
+    return ApplyElemWiseOpInplace(
+            std::move(y), std::move(x),
+            static_cast<float (*)(float, float)>(std::atan2));
+}
+
+NdArray ArcTan2(const NdArray& y, NdArray&& x) {
+    return ApplyElemWiseOpInplace(
+            y, std::move(x), static_cast<float (*)(float, float)>(std::atan2));
+}
+
+NdArray ArcTan2(NdArray&& y, const NdArray& x) {
+    return ApplyElemWiseOpInplace(
+            std::move(y), x, static_cast<float (*)(float, float)>(std::atan2));
+}
+
+NdArray ArcTan2(NdArray&& y, float x) {
+    return ApplyElemWiseOpInplace(
+            std::move(y), x, static_cast<float (*)(float, float)>(std::atan2));
+}
+
+NdArray ArcTan2(float y, NdArray&& x) {
+    return ApplyElemWiseOpInplace(
+            y, std::move(x), static_cast<float (*)(float, float)>(std::atan2));
 }
 
 // =============================================================================

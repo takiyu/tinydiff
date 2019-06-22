@@ -10,6 +10,70 @@ static void RequireNdArray(const NdArray& m, const std::string& str) {
     REQUIRE(ss.str() == str);
 }
 
+static void RequireNdArrayInplace(NdArray&& x, const std::string& str,
+                                  std::function<NdArray(NdArray&&)> f) {
+    uintptr_t x_id = x.id();
+    const NdArray& y = f(std::move(x));
+    REQUIRE(y.id() == x_id);
+    RequireNdArray(y, str);
+}
+
+static void RequireNdArrayNotInplace(NdArray&& x, const std::string& str,
+                                     std::function<NdArray(const NdArray&)> f) {
+    uintptr_t x_id = x.id();
+    const NdArray& y = f(x);
+    REQUIRE(y.id() != x_id);
+    RequireNdArray(y, str);
+}
+
+static void RequireNdArrayInplace(
+        NdArray&& lhs, NdArray&& rhs, const std::string& str,
+        std::function<NdArray(NdArray&&, NdArray&&)> f) {
+    uintptr_t l_id = lhs.id();
+    uintptr_t r_id = rhs.id();
+    const NdArray& ret = f(std::move(lhs), std::move(rhs));
+    REQUIRE((ret.id() == l_id || ret.id() == r_id));
+    RequireNdArray(ret, str);
+}
+
+static void RequireNdArrayInplace(
+        const NdArray& lhs, NdArray&& rhs, const std::string& str,
+        std::function<NdArray(const NdArray&, NdArray&&)> f) {
+    uintptr_t l_id = lhs.id();
+    uintptr_t r_id = rhs.id();
+    const NdArray& ret = f(lhs, std::move(rhs));
+    REQUIRE((ret.id() == l_id || ret.id() == r_id));
+    RequireNdArray(ret, str);
+}
+
+static void RequireNdArrayInplace(
+        NdArray&& lhs, const NdArray& rhs, const std::string& str,
+        std::function<NdArray(NdArray&&, const NdArray&)> f) {
+    uintptr_t l_id = lhs.id();
+    uintptr_t r_id = rhs.id();
+    const NdArray& ret = f(std::move(lhs), rhs);
+    REQUIRE((ret.id() == l_id || ret.id() == r_id));
+    RequireNdArray(ret, str);
+}
+
+static void RequireNdArrayInplace(NdArray&& lhs, float rhs,
+                                  const std::string& str,
+                                  std::function<NdArray(NdArray&&, float)> f) {
+    uintptr_t l_id = lhs.id();
+    const NdArray& ret = f(std::move(lhs), rhs);
+    REQUIRE((ret.id() == l_id));
+    RequireNdArray(ret, str);
+}
+
+static void RequireNdArrayInplace(float lhs, NdArray&& rhs,
+                                  const std::string& str,
+                                  std::function<NdArray(float, NdArray&&)> f) {
+    uintptr_t r_id = rhs.id();
+    const NdArray& ret = f(lhs, std::move(rhs));
+    REQUIRE((ret.id() == r_id));
+    RequireNdArray(ret, str);
+}
+
 static bool IsSameNdArray(const NdArray& m1, const NdArray& m2) {
     if (m1.shape() != m2.shape()) {
         return false;
@@ -1055,6 +1119,101 @@ TEST_CASE("NdArray") {
         RequireNdArray(Max(m2, {2, 1}), "[-1, 5]");
         RequireNdArray(Mean(m2, {2, 1}), "[-3.5, 2.5]");
     }
+
+    // ----------------------- In-place Operator function ----------------------
+    SECTION("Function in-place basic") {
+        // In-place
+        NdArray m1 = NdArray::Arange(3);
+        NdArray m2 = NdArray::Arange(3);
+        uintptr_t m1_id = m1.id();
+        uintptr_t m2_id = m2.id();
+        NdArray m3 = Power(std::move(m1), std::move(m2));
+        REQUIRE((m3.id() == m1_id || m3.id() == m2_id));  // m3 is not new array
+        // Not in-place
+        RequireNdArrayNotInplace(-NdArray::Arange(3.f), "[0, 1, 2]",
+                                 static_cast<NdArray (*)(const NdArray&)>(Abs));
+        // No matching broadcast
+        NdArray m4 = NdArray::Arange(6).reshape(2, 1, 3);
+        NdArray m5 = NdArray::Arange(2).reshape(2, 1);
+        uintptr_t m4_id = m4.id();
+        uintptr_t m5_id = m5.id();
+        NdArray m6 = Power(std::move(m4), std::move(m5));
+        REQUIRE((m6.id() != m4_id && m6.id() != m5_id));  // m6 is new array
+    }
+
+    SECTION("Function Basic Math (in-place)") {
+        RequireNdArrayInplace(-NdArray::Arange(3.f), "[0, 1, 2]",
+                              static_cast<NdArray (*)(NdArray &&)>(Abs));
+        RequireNdArrayInplace(NdArray::Arange(7.f) / 3.f - 1.f,
+                              "[-1, -0, -0, 0, 1, 1, 1]",
+                              static_cast<NdArray (*)(NdArray &&)>(Ceil));
+        RequireNdArrayInplace(NdArray::Arange(7.f) / 3.f - 1.f,
+                              "[-1, -1, -1, 0, 0, 0, 1]",
+                              static_cast<NdArray (*)(NdArray &&)>(Floor));
+        RequireNdArrayInplace(NdArray::Arange(3.f), "[0, 1, 1.41421]",
+                              static_cast<NdArray (*)(NdArray &&)>(Sqrt));
+        RequireNdArrayInplace(NdArray::Arange(3.f), "[1, 2.71828, 7.38906]",
+                              static_cast<NdArray (*)(NdArray &&)>(Exp));
+        RequireNdArrayInplace(NdArray::Arange(3.f), "[-inf, 0, 0.693147]",
+                              static_cast<NdArray (*)(NdArray &&)>(Log));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), NdArray::Arange(3.f) + 1.f, "[0, 1, 8]",
+                static_cast<NdArray (*)(NdArray&&, NdArray &&)>(Power));
+        const auto m1 = NdArray::Arange(3.f) + 1.f;
+        const auto m2 = NdArray::Arange(3.f);
+        RequireNdArrayInplace(
+                m2, NdArray::Arange(3.f) + 1.f, "[0, 1, 8]",
+                static_cast<NdArray (*)(const NdArray&, NdArray&&)>(Power));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), m1, "[0, 1, 8]",
+                static_cast<NdArray (*)(NdArray&&, const NdArray&)>(Power));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), 4.f, "[0, 1, 16]",
+                static_cast<NdArray (*)(NdArray&&, float)>(Power));
+        RequireNdArrayInplace(
+                4.f, NdArray::Arange(3.f), "[1, 4, 16]",
+                static_cast<NdArray (*)(float, NdArray&&)>(Power));
+    }
+
+    SECTION("Function Trigonometric (in-place)") {
+        RequireNdArrayInplace(NdArray::Arange(3.f), "[0, 0.841471, 0.909297]",
+                              static_cast<NdArray (*)(NdArray &&)>(Sin));
+        RequireNdArrayInplace(NdArray::Arange(3.f), "[1, 0.540302, -0.416147]",
+                              static_cast<NdArray (*)(NdArray &&)>(Cos));
+        RequireNdArrayInplace(NdArray::Arange(3.f), "[0, 1.55741, -2.18504]",
+                              static_cast<NdArray (*)(NdArray &&)>(Tan));
+    }
+
+    SECTION("Function Inverse-Trigonometric (in-place)") {
+        auto m1 = NdArray::Arange(3) - 1.f;
+        auto m2 = NdArray::Arange(3) * 100.f;
+        RequireNdArrayInplace(NdArray::Arange(3.f) - 1.f,
+                              "[-1.5708, 0, 1.5708]",
+                              static_cast<NdArray (*)(NdArray &&)>(ArcSin));
+        RequireNdArrayInplace(NdArray::Arange(3.f) - 1.f,
+                              "[3.14159, 1.5708, 0]",
+                              static_cast<NdArray (*)(NdArray &&)>(ArcCos));
+        RequireNdArrayInplace(NdArray::Arange(3.f) * 100.f,
+                              "[0, 1.5608, 1.5658]",
+                              static_cast<NdArray (*)(NdArray &&)>(ArcTan));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f) - 1.f, NdArray::Arange(3.f) * 100.f,
+                "[-1.5708, 0, 0.00499996]",
+                static_cast<NdArray (*)(NdArray&&, NdArray &&)>(ArcTan2));
+        RequireNdArrayInplace(
+                m1, NdArray::Arange(3.f) * 100.f, "[-1.5708, 0, 0.00499996]",
+                static_cast<NdArray (*)(const NdArray&, NdArray&&)>(ArcTan2));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f) - 1.f, m2, "[-1.5708, 0, 0.00499996]",
+                static_cast<NdArray (*)(NdArray&&, const NdArray&)>(ArcTan2));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f) - 1.f, 2.f, "[-0.463648, 0, 0.463648]",
+                static_cast<NdArray (*)(NdArray&&, float)>(ArcTan2));
+        RequireNdArrayInplace(
+                2.f, NdArray::Arange(3.f) - 1.f, "[2.03444, 1.5708, 1.10715]",
+                static_cast<NdArray (*)(float, NdArray&&)>(ArcTan2));
+    }
+
 }
 
 TEST_CASE("AutoGrad") {
@@ -1078,16 +1237,16 @@ TEST_CASE("AutoGrad") {
         std::cout << d.grad() << std::endl;
         std::cout << e.grad() << std::endl;
 
-//         REQUIRE(a.data() == Approx(10.f));
-//         REQUIRE(b.data() == Approx(20.f));
-//         REQUIRE(c.data() == Approx(22046.5f));
-//         REQUIRE(d.data() == Approx(440929.f));
-//         REQUIRE(e.data() == Approx(4.40929e+06f));
-//
-//         REQUIRE(a.grad() == Approx(4.84622e+06f));
-//         REQUIRE(b.grad() == Approx(220665.f));
-//         REQUIRE(c.grad() == Approx(200.f));
-//         REQUIRE(d.grad() == Approx(10.f));
-//         REQUIRE(e.grad() == Approx(1.f));
+        //         REQUIRE(a.data() == Approx(10.f));
+        //         REQUIRE(b.data() == Approx(20.f));
+        //         REQUIRE(c.data() == Approx(22046.5f));
+        //         REQUIRE(d.data() == Approx(440929.f));
+        //         REQUIRE(e.data() == Approx(4.40929e+06f));
+        //
+        //         REQUIRE(a.grad() == Approx(4.84622e+06f));
+        //         REQUIRE(b.grad() == Approx(220665.f));
+        //         REQUIRE(c.grad() == Approx(200.f));
+        //         REQUIRE(d.grad() == Approx(10.f));
+        //         REQUIRE(e.grad() == Approx(1.f));
     }
 }
