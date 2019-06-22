@@ -48,7 +48,7 @@ class NdArray {
 public:
     NdArray();
     NdArray(const NdArray&);
-    NdArray(NdArray&&);
+    NdArray(NdArray&&) noexcept;
     NdArray& operator=(const NdArray&);
     NdArray& operator=(NdArray&&);
     ~NdArray();
@@ -240,7 +240,7 @@ class Variable {
 public:
     Variable();
     Variable(const Variable&);
-    Variable(Variable&&);
+    Variable(Variable&&) noexcept;
     Variable& operator=(const Variable&);
     Variable& operator=(Variable&&);
     ~Variable();
@@ -276,7 +276,7 @@ class Function {
 public:
     Function();
     Function(const Function&);
-    Function(Function&&);
+    Function(Function&&) noexcept;
     Function& operator=(const Function&);
     Function& operator=(Function&&);
     virtual ~Function();
@@ -952,7 +952,7 @@ static void CrossNdArray1d1dShape33(float* ret_data, const float* l_data,
     // lhs.shape() == {3} && rhs.shape == {3}
     *(ret_data++) = l_data[1] * r_data[2] - l_data[2] * r_data[1];
     *(ret_data++) = l_data[2] * r_data[0] - l_data[0] * r_data[2];
-    *(ret_data++) = l_data[0] * r_data[1] - l_data[1] * r_data[0];
+    *ret_data = l_data[0] * r_data[1] - l_data[1] * r_data[0];
 }
 
 static void CrossNdArray1d1dShape32(float* ret_data, const float* l_data,
@@ -1051,7 +1051,7 @@ NdArray::NdArray(std::shared_ptr<Substance> sub) : m_sub(sub) {}
 
 NdArray::NdArray(const NdArray& lhs) = default;  // shallow copy
 
-NdArray::NdArray(NdArray&&) = default;  // move
+NdArray::NdArray(NdArray&& lhs) noexcept : m_sub(lhs.m_sub) {}  // move
 
 NdArray& NdArray::operator=(const NdArray& lhs) = default;  // shallow copy
 
@@ -1958,7 +1958,7 @@ Variable::Variable(std::shared_ptr<Substance> sub) : m_sub(sub) {}
 
 Variable::Variable(const Variable& lhs) = default;  // shallow copy
 
-Variable::Variable(Variable&&) = default;  // move
+Variable::Variable(Variable&& lhs) noexcept : m_sub(lhs.m_sub) {}  // move
 
 Variable& Variable::operator=(const Variable& lhs) = default;  // shallow copy
 
@@ -2075,7 +2075,7 @@ Function::Function(std::shared_ptr<Substance> sub) : m_sub(sub) {}
 
 Function::Function(const Function& lhs) = default;  // shallow copy
 
-Function::Function(Function&&) = default;
+Function::Function(Function&& lhs) noexcept : m_sub(lhs.m_sub) {}
 
 Function& Function::operator=(const Function& lhs) = default;  // shallow copy
 
