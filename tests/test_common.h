@@ -714,6 +714,8 @@ TEST_CASE("NdArray") {
         auto m1 = NdArray::Arange(6.f).reshape(2, 3);
         auto m_p = +m1;
         auto m_n = -m1;
+        REQUIRE(m_p.id() != m1.id());
+        REQUIRE(m_n.id() != m1.id());
         RequireNdArray(m_p,
                        "[[0, 1, 2],\n"
                        " [3, 4, 5]]");

@@ -147,34 +147,42 @@ private:
 };
 
 // --------------------------------- Operators ---------------------------------
+// Print
 std::ostream& operator<<(std::ostream& os, const NdArray& x);
 std::ostream& operator<<(std::ostream& os, const Shape& shape);
+// Single
 NdArray operator+(const NdArray& x);
 NdArray operator-(const NdArray& x);
+// Arithmetic (NdArray, NdArray)
 NdArray operator+(const NdArray& lhs, const NdArray& rhs);
 NdArray operator-(const NdArray& lhs, const NdArray& rhs);
 NdArray operator*(const NdArray& lhs, const NdArray& rhs);
 NdArray operator/(const NdArray& lhs, const NdArray& rhs);
+// Arithmetic (NdArray, float)
 NdArray operator+(const NdArray& lhs, const float& rhs);
 NdArray operator-(const NdArray& lhs, const float& rhs);
 NdArray operator*(const NdArray& lhs, const float& rhs);
 NdArray operator/(const NdArray& lhs, const float& rhs);
+// Arithmetic (float, NdArray)
 NdArray operator+(const float& lhs, const NdArray& rhs);
 NdArray operator-(const float& lhs, const NdArray& rhs);
 NdArray operator*(const float& lhs, const NdArray& rhs);
 NdArray operator/(const float& lhs, const NdArray& rhs);
+// Comparison (NdArray, NdArray)
 NdArray operator==(const NdArray& lhs, const NdArray& rhs);
 NdArray operator!=(const NdArray& lhs, const NdArray& rhs);
 NdArray operator>(const NdArray& lhs, const NdArray& rhs);
 NdArray operator>=(const NdArray& lhs, const NdArray& rhs);
 NdArray operator<(const NdArray& lhs, const NdArray& rhs);
 NdArray operator<=(const NdArray& lhs, const NdArray& rhs);
+// Comparison (NdArray, float)
 NdArray operator==(const NdArray& lhs, float rhs);
 NdArray operator!=(const NdArray& lhs, float rhs);
 NdArray operator>(const NdArray& lhs, float rhs);
 NdArray operator>=(const NdArray& lhs, float rhs);
 NdArray operator<(const NdArray& lhs, float rhs);
 NdArray operator<=(const NdArray& lhs, float rhs);
+// Comparison (float, NdArray)
 NdArray operator==(float lhs, const NdArray& rhs);
 NdArray operator!=(float lhs, const NdArray& rhs);
 NdArray operator>(float lhs, const NdArray& rhs);
@@ -182,10 +190,15 @@ NdArray operator>=(float lhs, const NdArray& rhs);
 NdArray operator<(float lhs, const NdArray& rhs);
 NdArray operator<=(float lhs, const NdArray& rhs);
 // ----------------------------- In-place Operators ----------------------------
+// Single
+NdArray operator+(NdArray&& x);
+NdArray operator-(NdArray&& x);
+// Compound Assignment (NdArray, NdArray)
 NdArray operator+=(NdArray& lhs, const NdArray& rhs);
 NdArray operator-=(NdArray& lhs, const NdArray& rhs);
 NdArray operator*=(NdArray& lhs, const NdArray& rhs);
 NdArray operator/=(NdArray& lhs, const NdArray& rhs);
+// Compound Assignment (NdArray, float)
 NdArray operator+=(NdArray& lhs, float rhs);
 NdArray operator-=(NdArray& lhs, float rhs);
 NdArray operator*=(NdArray& lhs, float rhs);
@@ -1805,14 +1818,7 @@ template NdArray NdArray::slice(ISII, ISII, ISII, ISII, ISII, ISII, ISII, ISII,
                                 ISII, ISII, ISII) const;
 
 // --------------------------------- Operators ---------------------------------
-NdArray operator+(const NdArray& x) {
-    return x;
-}
-
-NdArray operator-(const NdArray& x) {
-    return ApplySingleOp(x, [](float v) { return -v; });
-}
-
+// Print
 std::ostream& operator<<(std::ostream& os, const NdArray& x) {
     OutputNdArray(os, x);
     return os;
@@ -1823,6 +1829,16 @@ std::ostream& operator<<(std::ostream& os, const Shape& shape) {
     return os;
 }
 
+// Single
+NdArray operator+(const NdArray& x) {
+    return x.copy();  // Numpy behavior
+}
+
+NdArray operator-(const NdArray& x) {
+    return ApplySingleOp(x, [](float v) { return -v; });
+}
+
+// Arithmetic (NdArray, NdArray)
 NdArray operator+(const NdArray& lhs, const NdArray& rhs) {
     return Add(lhs, rhs);
 }
@@ -1839,6 +1855,7 @@ NdArray operator/(const NdArray& lhs, const NdArray& rhs) {
     return Divide(lhs, rhs);
 }
 
+// Arithmetic (NdArray, float)
 NdArray operator+(const NdArray& lhs, const float& rhs) {
     return Add(lhs, rhs);
 }
@@ -1855,6 +1872,7 @@ NdArray operator/(const NdArray& lhs, const float& rhs) {
     return Divide(lhs, rhs);
 }
 
+// Arithmetic (float, NdArray)
 NdArray operator+(const float& lhs, const NdArray& rhs) {
     return Add(lhs, rhs);
 }
@@ -1871,6 +1889,7 @@ NdArray operator/(const float& lhs, const NdArray& rhs) {
     return Divide(lhs, rhs);
 }
 
+// Comparison (NdArray, NdArray)
 NdArray operator==(const NdArray& lhs, const NdArray& rhs) {
     return Equal(lhs, rhs);
 }
@@ -1895,6 +1914,7 @@ NdArray operator<=(const NdArray& lhs, const NdArray& rhs) {
     return LessEqual(lhs, rhs);
 }
 
+// Comparison (NdArray, float)
 NdArray operator==(const NdArray& lhs, float rhs) {
     return Equal(lhs, rhs);
 }
@@ -1919,6 +1939,7 @@ NdArray operator<=(const NdArray& lhs, float rhs) {
     return LessEqual(lhs, rhs);
 }
 
+// Comparison (float, NdArray)
 NdArray operator==(float lhs, const NdArray& rhs) {
     return Equal(lhs, rhs);
 }
@@ -1944,6 +1965,16 @@ NdArray operator<=(float lhs, const NdArray& rhs) {
 }
 
 // ----------------------------- In-place Operators ----------------------------
+// Single
+NdArray operator+(const NdArray& x) {
+    return x.copy();  // Numpy behavior
+}
+
+NdArray operator-(const NdArray& x) {
+    return ApplySingleOp(x, [](float v) { return -v; });
+}
+
+// Compound Assignment (NdArray, NdArray)
 NdArray operator+=(NdArray& lhs, const NdArray& rhs) {
     return lhs = ApplyElemWiseOpInplace(std::move(lhs), rhs, std::plus<float>(),
                                         false);  // force in-place
@@ -1967,6 +1998,7 @@ NdArray operator/=(NdArray& lhs, const NdArray& rhs) {
                                         false);  // force in-place
 }
 
+// Compound Assignment (NdArray, float)
 NdArray operator+=(NdArray& lhs, float rhs) {
     return lhs = Add(std::move(lhs), rhs);
 }
