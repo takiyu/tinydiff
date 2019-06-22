@@ -777,6 +777,11 @@ TEST_CASE("NdArray") {
         auto m3 = NdArray::Arange(6.f).reshape(2, 3);
         auto m4 = NdArray::Arange(6.f).reshape(2, 3);
         auto m5 = NdArray::Arange(3.f);
+        auto m0_id = m0.id();
+        auto m1_id = m1.id();
+        auto m2_id = m2.id();
+        auto m3_id = m3.id();
+        auto m4_id = m4.id();
         m0 += m0;
         m1 += NdArray::Arange(3.f);
         m2 -= NdArray::Arange(3.f);
@@ -800,6 +805,11 @@ TEST_CASE("NdArray") {
                        "[[nan, 1, 1],\n"
                        " [inf, 4, 2.5]]");
         REQUIRE_THROWS(m5 += m0);
+        REQUIRE(m0.id() == m0_id);  // in-place
+        REQUIRE(m1.id() == m1_id);
+        REQUIRE(m2.id() == m2_id);
+        REQUIRE(m3.id() == m3_id);
+        REQUIRE(m4.id() == m4_id);
     }
 
     SECTION("Arithmetic inplace operators (ndarray, float)") {
@@ -807,6 +817,10 @@ TEST_CASE("NdArray") {
         auto m2 = NdArray::Arange(6.f).reshape(2, 3);
         auto m3 = NdArray::Arange(6.f).reshape(2, 3);
         auto m4 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m1_id = m1.id();
+        auto m2_id = m2.id();
+        auto m3_id = m3.id();
+        auto m4_id = m4.id();
         m1 += 10.f;
         m2 -= 10.f;
         m3 *= 10.f;
@@ -823,6 +837,10 @@ TEST_CASE("NdArray") {
         RequireNdArray(m4,
                        "[[0, 0.1, 0.2],\n"
                        " [0.3, 0.4, 0.5]]");
+        REQUIRE(m1.id() == m1_id);
+        REQUIRE(m2.id() == m2_id);
+        REQUIRE(m3.id() == m3_id);
+        REQUIRE(m4.id() == m4_id);
     }
 
     SECTION("Single +- operators") {
