@@ -916,7 +916,217 @@ TEST_CASE("NdArray") {
     }
 
     // --------------------------- In-place Operator ---------------------------
-    SECTION("Arithmetic in-place operators (NdArray, NdArray)") {
+    SECTION("Arithmetic operators (NdArray, NdArray) (in-place both)") {
+        RequireNdArrayInplace(
+                NdArray::Arange(6.f).reshape(2, 3), NdArray::Arange(3.f),
+                "[[0, 2, 4],\n"
+                " [3, 5, 7]]",
+                static_cast<NdArray (*)(NdArray&&, NdArray &&)>(operator+));
+        RequireNdArrayInplace(
+                NdArray::Arange(6.f).reshape(2, 3), NdArray::Arange(3.f),
+                "[[0, 0, 0],\n"
+                " [3, 3, 3]]",
+                static_cast<NdArray (*)(NdArray&&, NdArray &&)>(operator-));
+        RequireNdArrayInplace(
+                NdArray::Arange(6.f).reshape(2, 3), NdArray::Arange(3.f),
+                "[[0, 1, 4],\n"
+                " [0, 4, 10]]",
+                static_cast<NdArray (*)(NdArray&&, NdArray &&)>(operator*));
+        RequireNdArrayInplace(
+                NdArray::Arange(6.f).reshape(2, 3), NdArray::Arange(3.f) + 1.f,
+                "[[0, 0.5, 0.666667],\n"
+                " [3, 2, 1.66667]]",
+                static_cast<NdArray (*)(NdArray&&, NdArray &&)>(operator/));
+    }
+
+    SECTION("Arithmetic operators (NdArray, NdArray) (in-place right)") {
+        auto m1 = NdArray::Arange(3.f);
+        auto m2 = NdArray::Arange(3.f) + 1.f;
+        RequireNdArrayInplace(
+                m1, NdArray::Arange(6.f).reshape(2, 3),
+                "[[0, 2, 4],\n"
+                " [3, 5, 7]]",
+                static_cast<NdArray (*)(const NdArray&, NdArray&&)>(operator+));
+        RequireNdArrayInplace(
+                m1, NdArray::Arange(6.f).reshape(2, 3),
+                "[[0, 0, 0],\n"
+                " [-3, -3, -3]]",
+                static_cast<NdArray (*)(const NdArray&, NdArray&&)>(operator-));
+        RequireNdArrayInplace(
+                m1, NdArray::Arange(6.f).reshape(2, 3),
+                "[[0, 1, 4],\n"
+                " [0, 4, 10]]",
+                static_cast<NdArray (*)(const NdArray&, NdArray&&)>(operator*));
+        RequireNdArrayInplace(
+                m2, NdArray::Arange(6.f).reshape(2, 3),
+                "[[inf, 2, 1.5],\n"
+                " [0.333333, 0.5, 0.6]]",
+                static_cast<NdArray (*)(const NdArray&, NdArray&&)>(operator/));
+    }
+
+    SECTION("Arithmetic operators (NdArray, NdArray) (in-place left)") {
+        auto m2 = NdArray::Arange(3.f);
+        auto m3 = NdArray::Arange(3.f) + 1.f;
+        RequireNdArrayInplace(
+                NdArray::Arange(6.f).reshape(2, 3), m2,
+                "[[0, 2, 4],\n"
+                " [3, 5, 7]]",
+                static_cast<NdArray (*)(NdArray&&, const NdArray&)>(operator+));
+        RequireNdArrayInplace(
+                NdArray::Arange(6.f).reshape(2, 3), m2,
+                "[[0, 0, 0],\n"
+                " [3, 3, 3]]",
+                static_cast<NdArray (*)(NdArray&&, const NdArray&)>(operator-));
+        RequireNdArrayInplace(
+                NdArray::Arange(6.f).reshape(2, 3), m2,
+                "[[0, 1, 4],\n"
+                " [0, 4, 10]]",
+                static_cast<NdArray (*)(NdArray&&, const NdArray&)>(operator*));
+        RequireNdArrayInplace(
+                NdArray::Arange(6.f).reshape(2, 3), m3,
+                "[[0, 0.5, 0.666667],\n"
+                " [3, 2, 1.66667]]",
+                static_cast<NdArray (*)(NdArray&&, const NdArray&)>(operator/));
+    }
+
+    SECTION("Arithmetic operators (NdArray, float) (inplace)") {
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), 2.f, "[2, 3, 4]",
+                static_cast<NdArray (*)(NdArray&&, float)>(operator+));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), 2.f, "[-2, -1, 0]",
+                static_cast<NdArray (*)(NdArray&&, float)>(operator-));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), 2.f, "[0, 2, 4]",
+                static_cast<NdArray (*)(NdArray&&, float)>(operator*));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), 2.f, "[0, 0.5, 1]",
+                static_cast<NdArray (*)(NdArray&&, float)>(operator/));
+    }
+
+    SECTION("Arithmetic operators (float, NdArray) (inplace)") {
+        RequireNdArrayInplace(
+                2.f, NdArray::Arange(3.f), "[2, 3, 4]",
+                static_cast<NdArray (*)(float, NdArray&&)>(operator+));
+        RequireNdArrayInplace(
+                2.f, NdArray::Arange(3.f), "[2, 1, 0]",
+                static_cast<NdArray (*)(float, NdArray&&)>(operator-));
+        RequireNdArrayInplace(
+                2.f, NdArray::Arange(3.f), "[0, 2, 4]",
+                static_cast<NdArray (*)(float, NdArray&&)>(operator*));
+        RequireNdArrayInplace(
+                2.f, NdArray::Arange(3.f), "[inf, 2, 1]",
+                static_cast<NdArray (*)(float, NdArray&&)>(operator/));
+    }
+
+    SECTION("Comparison operators (NdArray, NdArray) (inplace both)") {
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), NdArray::Zeros(1) + 1.f, "[0, 1, 0]",
+                static_cast<NdArray (*)(NdArray&&, NdArray &&)>(operator==));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), NdArray::Zeros(1) + 1.f, "[1, 0, 1]",
+                static_cast<NdArray (*)(NdArray&&, NdArray &&)>(operator!=));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), NdArray::Zeros(1) + 1.f, "[0, 0, 1]",
+                static_cast<NdArray (*)(NdArray&&, NdArray &&)>(operator>));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), NdArray::Zeros(1) + 1.f, "[0, 1, 1]",
+                static_cast<NdArray (*)(NdArray&&, NdArray &&)>(operator>=));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), NdArray::Zeros(1) + 1.f, "[1, 0, 0]",
+                static_cast<NdArray (*)(NdArray&&, NdArray &&)>(operator<));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), NdArray::Zeros(1) + 1.f, "[1, 1, 0]",
+                static_cast<NdArray (*)(NdArray&&, NdArray &&)>(operator<=));
+    }
+
+    SECTION("Comparison operators (NdArray, NdArray) (inplace right)") {
+        auto m2 = NdArray::Zeros(1) + 1.f;
+        RequireNdArrayInplace(NdArray::Arange(3.f), m2, "[0, 1, 0]",
+                              static_cast<NdArray (*)(
+                                      NdArray&&, const NdArray&)>(operator==));
+        RequireNdArrayInplace(NdArray::Arange(3.f), m2, "[1, 0, 1]",
+                              static_cast<NdArray (*)(
+                                      NdArray&&, const NdArray&)>(operator!=));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), m2, "[0, 0, 1]",
+                static_cast<NdArray (*)(NdArray&&, const NdArray&)>(operator>));
+        RequireNdArrayInplace(NdArray::Arange(3.f), m2, "[0, 1, 1]",
+                              static_cast<NdArray (*)(
+                                      NdArray&&, const NdArray&)>(operator>=));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), m2, "[1, 0, 0]",
+                static_cast<NdArray (*)(NdArray&&, const NdArray&)>(operator<));
+        RequireNdArrayInplace(NdArray::Arange(3.f), m2, "[1, 1, 0]",
+                              static_cast<NdArray (*)(
+                                      NdArray&&, const NdArray&)>(operator<=));
+    }
+
+    SECTION("Comparison operators (NdArray, NdArray) (inplace left)") {
+        auto m1 = NdArray::Zeros(1) + 1.f;
+        RequireNdArrayInplace(m1, NdArray::Arange(3.f), "[0, 1, 0]",
+                              static_cast<NdArray (*)(const NdArray&,
+                                                      NdArray&&)>(operator==));
+        RequireNdArrayInplace(m1, NdArray::Arange(3.f), "[1, 0, 1]",
+                              static_cast<NdArray (*)(const NdArray&,
+                                                      NdArray&&)>(operator!=));
+        RequireNdArrayInplace(
+                m1, NdArray::Arange(3.f), "[1, 0, 0]",
+                static_cast<NdArray (*)(const NdArray&, NdArray&&)>(operator>));
+        RequireNdArrayInplace(m1, NdArray::Arange(3.f), "[1, 1, 0]",
+                              static_cast<NdArray (*)(const NdArray&,
+                                                      NdArray&&)>(operator>=));
+        RequireNdArrayInplace(
+                m1, NdArray::Arange(3.f), "[0, 0, 1]",
+                static_cast<NdArray (*)(const NdArray&, NdArray&&)>(operator<));
+        RequireNdArrayInplace(m1, NdArray::Arange(3.f), "[0, 1, 1]",
+                              static_cast<NdArray (*)(const NdArray&,
+                                                      NdArray&&)>(operator<=));
+    }
+
+    SECTION("Comparison operators (NdArray, float) (inplace)") {
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), 1.f, "[0, 1, 0]",
+                static_cast<NdArray (*)(NdArray&&, float)>(operator==));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), 1.f, "[1, 0, 1]",
+                static_cast<NdArray (*)(NdArray&&, float)>(operator!=));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), 1.f, "[0, 0, 1]",
+                static_cast<NdArray (*)(NdArray&&, float)>(operator>));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), 1.f, "[0, 1, 1]",
+                static_cast<NdArray (*)(NdArray&&, float)>(operator>=));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), 1.f, "[1, 0, 0]",
+                static_cast<NdArray (*)(NdArray&&, float)>(operator<));
+        RequireNdArrayInplace(
+                NdArray::Arange(3.f), 1.f, "[1, 1, 0]",
+                static_cast<NdArray (*)(NdArray&&, float)>(operator<=));
+    }
+
+    SECTION("Comparison operators (NdArray, float) (inplace)") {
+        RequireNdArrayInplace(
+                1.f, NdArray::Arange(3.f), "[0, 1, 0]",
+                static_cast<NdArray (*)(float, NdArray&&)>(operator==));
+        RequireNdArrayInplace(
+                1.f, NdArray::Arange(3.f), "[1, 0, 1]",
+                static_cast<NdArray (*)(float, NdArray&&)>(operator!=));
+        RequireNdArrayInplace(
+                1.f, NdArray::Arange(3.f), "[1, 0, 0]",
+                static_cast<NdArray (*)(float, NdArray&&)>(operator>));
+        RequireNdArrayInplace(
+                1.f, NdArray::Arange(3.f), "[1, 1, 0]",
+                static_cast<NdArray (*)(float, NdArray&&)>(operator>=));
+        RequireNdArrayInplace(
+                1.f, NdArray::Arange(3.f), "[0, 0, 1]",
+                static_cast<NdArray (*)(float, NdArray&&)>(operator<));
+        RequireNdArrayInplace(
+                1.f, NdArray::Arange(3.f), "[0, 1, 1]",
+                static_cast<NdArray (*)(float, NdArray&&)>(operator<=));
+    }
+
+    SECTION("Compound assignment operators (NdArray, NdArray) (in-plafce)") {
         auto m0 = NdArray::Arange(6.f).reshape(2, 3);
         auto m1 = NdArray::Arange(6.f).reshape(2, 3);
         auto m2 = NdArray::Arange(6.f).reshape(2, 3);
@@ -961,7 +1171,7 @@ TEST_CASE("NdArray") {
         REQUIRE_THROWS(m6 *= m5.reshape(3, 1));
     }
 
-    SECTION("Arithmetic in-place operators (NdArray, float)") {
+    SECTION("Compound assignment operators (NdArray, float) (in-plafce)") {
         auto m1 = NdArray::Arange(6.f).reshape(2, 3);
         auto m2 = NdArray::Arange(6.f).reshape(2, 3);
         auto m3 = NdArray::Arange(6.f).reshape(2, 3);
@@ -1219,7 +1429,7 @@ TEST_CASE("NdArray") {
                 static_cast<NdArray (*)(NdArray&&, const NdArray&)>(Divide));
     }
 
-    SECTION("Arithmetic operators (NdArray, float) (inplace)") {
+    SECTION("Function Arithmetic (NdArray, float) (inplace)") {
         RequireNdArrayInplace(NdArray::Arange(3.f), 2.f, "[2, 3, 4]",
                               static_cast<NdArray (*)(NdArray&&, float)>(Add));
         RequireNdArrayInplace(
@@ -1233,7 +1443,7 @@ TEST_CASE("NdArray") {
                 static_cast<NdArray (*)(NdArray&&, float)>(Divide));
     }
 
-    SECTION("Arithmetic operators (float, NdArray) (inplace)") {
+    SECTION("Function Arithmetic (float, NdArray) (inplace)") {
         RequireNdArrayInplace(2.f, NdArray::Arange(3.f), "[2, 3, 4]",
                               static_cast<NdArray (*)(float, NdArray&&)>(Add));
         RequireNdArrayInplace(
@@ -1247,7 +1457,7 @@ TEST_CASE("NdArray") {
                 static_cast<NdArray (*)(float, NdArray&&)>(Divide));
     }
 
-    SECTION("Comparison operators (NdArray, NdArray) (inplace both)") {
+    SECTION("Function Comparison (NdArray, NdArray) (inplace both)") {
         RequireNdArrayInplace(
                 NdArray::Arange(3.f), NdArray::Zeros(1) + 1.f, "[0, 1, 0]",
                 static_cast<NdArray (*)(NdArray&&, NdArray &&)>(Equal));
@@ -1268,7 +1478,7 @@ TEST_CASE("NdArray") {
                 static_cast<NdArray (*)(NdArray&&, NdArray &&)>(LessEqual));
     }
 
-    SECTION("Comparison operators (NdArray, NdArray) (inplace right)") {
+    SECTION("Function Comparison (NdArray, NdArray) (inplace right)") {
         auto m2 = NdArray::Zeros(1) + 1.f;
         RequireNdArrayInplace(
                 NdArray::Arange(3.f), m2, "[0, 1, 0]",
@@ -1291,7 +1501,7 @@ TEST_CASE("NdArray") {
                 static_cast<NdArray (*)(NdArray&&, const NdArray&)>(LessEqual));
     }
 
-    SECTION("Comparison operators (NdArray, NdArray) (inplace left)") {
+    SECTION("Function Comparison (NdArray, NdArray) (inplace left)") {
         auto m1 = NdArray::Zeros(1) + 1.f;
         RequireNdArrayInplace(
                 m1, NdArray::Arange(3.f), "[0, 1, 0]",
@@ -1314,7 +1524,7 @@ TEST_CASE("NdArray") {
                 static_cast<NdArray (*)(const NdArray&, NdArray&&)>(LessEqual));
     }
 
-    SECTION("Comparison operators (NdArray, float) (inplace)") {
+    SECTION("Function Comparison (NdArray, float) (inplace)") {
         RequireNdArrayInplace(
                 NdArray::Arange(3.f), 1.f, "[0, 1, 0]",
                 static_cast<NdArray (*)(NdArray&&, float)>(Equal));
@@ -1334,7 +1544,7 @@ TEST_CASE("NdArray") {
                 static_cast<NdArray (*)(NdArray&&, float)>(LessEqual));
     }
 
-    SECTION("Comparison operators (NdArray, float) (inplace)") {
+    SECTION("Function Comparison (NdArray, float) (inplace)") {
         RequireNdArrayInplace(
                 1.f, NdArray::Arange(3.f), "[0, 1, 0]",
                 static_cast<NdArray (*)(float, NdArray&&)>(Equal));

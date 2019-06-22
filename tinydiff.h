@@ -193,6 +193,62 @@ NdArray operator<=(float lhs, const NdArray& rhs);
 // Single
 NdArray operator+(NdArray&& x);
 NdArray operator-(NdArray&& x);
+// Arithmetic (NdArray, NdArray)
+NdArray operator+(NdArray&& lhs, NdArray&& rhs);
+NdArray operator+(const NdArray& lhs, NdArray&& rhs);
+NdArray operator+(NdArray&& lhs, const NdArray& rhs);
+NdArray operator-(NdArray&& lhs, NdArray&& rhs);
+NdArray operator-(const NdArray& lhs, NdArray&& rhs);
+NdArray operator-(NdArray&& lhs, const NdArray& rhs);
+NdArray operator*(NdArray&& lhs, NdArray&& rhs);
+NdArray operator*(const NdArray& lhs, NdArray&& rhs);
+NdArray operator*(NdArray&& lhs, const NdArray& rhs);
+NdArray operator/(NdArray&& lhs, NdArray&& rhs);
+NdArray operator/(const NdArray& lhs, NdArray&& rhs);
+NdArray operator/(NdArray&& lhs, const NdArray& rhs);
+// Arithmetic (NdArray, float)
+NdArray operator+(NdArray&& lhs, float rhs);
+NdArray operator-(NdArray&& lhs, float rhs);
+NdArray operator*(NdArray&& lhs, float rhs);
+NdArray operator/(NdArray&& lhs, float rhs);
+// Arithmetic (float, NdArray)
+NdArray operator+(float lhs, NdArray&& rhs);
+NdArray operator-(float lhs, NdArray&& rhs);
+NdArray operator*(float lhs, NdArray&& rhs);
+NdArray operator/(float lhs, NdArray&& rhs);
+// Comparison (NdArray, NdArray)
+NdArray operator==(NdArray&& lhs, NdArray&& rhs);
+NdArray operator==(const NdArray& lhs, NdArray&& rhs);
+NdArray operator==(NdArray&& lhs, const NdArray& rhs);
+NdArray operator!=(NdArray&& lhs, NdArray&& rhs);
+NdArray operator!=(const NdArray& lhs, NdArray&& rhs);
+NdArray operator!=(NdArray&& lhs, const NdArray& rhs);
+NdArray operator>(NdArray&& lhs, NdArray&& rhs);
+NdArray operator>(const NdArray& lhs, NdArray&& rhs);
+NdArray operator>(NdArray&& lhs, const NdArray& rhs);
+NdArray operator>=(NdArray&& lhs, NdArray&& rhs);
+NdArray operator>=(const NdArray& lhs, NdArray&& rhs);
+NdArray operator>=(NdArray&& lhs, const NdArray& rhs);
+NdArray operator<(NdArray&& lhs, NdArray&& rhs);
+NdArray operator<(const NdArray& lhs, NdArray&& rhs);
+NdArray operator<(NdArray&& lhs, const NdArray& rhs);
+NdArray operator<=(NdArray&& lhs, NdArray&& rhs);
+NdArray operator<=(const NdArray& lhs, NdArray&& rhs);
+NdArray operator<=(NdArray&& lhs, const NdArray& rhs);
+// Comparison (NdArray, float)
+NdArray operator==(NdArray&& lhs, float rhs);
+NdArray operator!=(NdArray&& lhs, float rhs);
+NdArray operator>(NdArray&& lhs, float rhs);
+NdArray operator>=(NdArray&& lhs, float rhs);
+NdArray operator<(NdArray&& lhs, float rhs);
+NdArray operator<=(NdArray&& lhs, float rhs);
+// Comparison (float, NdArray)
+NdArray operator==(float lhs, NdArray&& rhs);
+NdArray operator!=(float lhs, NdArray&& rhs);
+NdArray operator>(float lhs, NdArray&& rhs);
+NdArray operator>=(float lhs, NdArray&& rhs);
+NdArray operator<(float lhs, NdArray&& rhs);
+NdArray operator<=(float lhs, NdArray&& rhs);
 // Compound Assignment (NdArray, NdArray)
 NdArray operator+=(NdArray& lhs, const NdArray& rhs);
 NdArray operator-=(NdArray& lhs, const NdArray& rhs);
@@ -1966,12 +2022,218 @@ NdArray operator<=(float lhs, const NdArray& rhs) {
 
 // ----------------------------- In-place Operators ----------------------------
 // Single
-NdArray operator+(const NdArray& x) {
-    return x.copy();  // Numpy behavior
+NdArray operator+(NdArray&& x) {
+    return std::move(x);
 }
 
-NdArray operator-(const NdArray& x) {
-    return ApplySingleOp(x, [](float v) { return -v; });
+NdArray operator-(NdArray&& x) {
+    return ApplySingleOpInplace(std::move(x), [](float v) { return -v; });
+}
+
+// Arithmetic (NdArray, NdArray)
+NdArray operator+(NdArray&& lhs, NdArray&& rhs) {
+    return Add(std::move(lhs), std::move(rhs));
+}
+
+NdArray operator+(const NdArray& lhs, NdArray&& rhs) {
+    return Add(lhs, std::move(rhs));
+}
+
+NdArray operator+(NdArray&& lhs, const NdArray& rhs) {
+    return Add(std::move(lhs), rhs);
+}
+
+NdArray operator-(NdArray&& lhs, NdArray&& rhs) {
+    return Subtract(std::move(lhs), std::move(rhs));
+}
+
+NdArray operator-(const NdArray& lhs, NdArray&& rhs) {
+    return Subtract(lhs, std::move(rhs));
+}
+
+NdArray operator-(NdArray&& lhs, const NdArray& rhs) {
+    return Subtract(std::move(lhs), rhs);
+}
+
+NdArray operator*(NdArray&& lhs, NdArray&& rhs) {
+    return Multiply(std::move(lhs), std::move(rhs));
+}
+
+NdArray operator*(const NdArray& lhs, NdArray&& rhs) {
+    return Multiply(lhs, std::move(rhs));
+}
+
+NdArray operator*(NdArray&& lhs, const NdArray& rhs) {
+    return Multiply(std::move(lhs), rhs);
+}
+
+NdArray operator/(NdArray&& lhs, NdArray&& rhs) {
+    return Divide(std::move(lhs), std::move(rhs));
+}
+
+NdArray operator/(const NdArray& lhs, NdArray&& rhs) {
+    return Divide(lhs, std::move(rhs));
+}
+
+NdArray operator/(NdArray&& lhs, const NdArray& rhs) {
+    return Divide(std::move(lhs), rhs);
+}
+
+// Arithmetic (NdArray, float)
+NdArray operator+(NdArray&& lhs, float rhs) {
+    return Add(std::move(lhs), rhs);
+}
+
+NdArray operator-(NdArray&& lhs, float rhs) {
+    return Subtract(std::move(lhs), rhs);
+}
+
+NdArray operator*(NdArray&& lhs, float rhs) {
+    return Multiply(std::move(lhs), rhs);
+}
+
+NdArray operator/(NdArray&& lhs, float rhs) {
+    return Divide(std::move(lhs), rhs);
+}
+
+// Arithmetic (float, NdArray)
+NdArray operator+(float lhs, NdArray&& rhs) {
+    return Add(lhs, std::move(rhs));
+}
+
+NdArray operator-(float lhs, NdArray&& rhs) {
+    return Subtract(lhs, std::move(rhs));
+}
+
+NdArray operator*(float lhs, NdArray&& rhs) {
+    return Multiply(lhs, std::move(rhs));
+}
+
+NdArray operator/(float lhs, NdArray&& rhs) {
+    return Divide(lhs, std::move(rhs));
+}
+
+// Comparison (NdArray, NdArray)
+NdArray operator==(NdArray&& lhs, NdArray&& rhs) {
+    return Equal(std::move(lhs), std::move(rhs));
+}
+
+NdArray operator==(const NdArray& lhs, NdArray&& rhs) {
+    return Equal(lhs, std::move(rhs));
+}
+
+NdArray operator==(NdArray&& lhs, const NdArray& rhs) {
+    return Equal(std::move(lhs), rhs);
+}
+
+NdArray operator!=(NdArray&& lhs, NdArray&& rhs) {
+    return NotEqual(std::move(lhs), std::move(rhs));
+}
+
+NdArray operator!=(const NdArray& lhs, NdArray&& rhs) {
+    return NotEqual(lhs, std::move(rhs));
+}
+
+NdArray operator!=(NdArray&& lhs, const NdArray& rhs) {
+    return NotEqual(std::move(lhs), rhs);
+}
+
+NdArray operator>(NdArray&& lhs, NdArray&& rhs) {
+    return Greater(std::move(lhs), std::move(rhs));
+}
+
+NdArray operator>(const NdArray& lhs, NdArray&& rhs) {
+    return Greater(lhs, std::move(rhs));
+}
+
+NdArray operator>(NdArray&& lhs, const NdArray& rhs) {
+    return Greater(std::move(lhs), rhs);
+}
+
+NdArray operator>=(NdArray&& lhs, NdArray&& rhs) {
+    return GreaterEqual(std::move(lhs), std::move(rhs));
+}
+
+NdArray operator>=(const NdArray& lhs, NdArray&& rhs) {
+    return GreaterEqual(lhs, std::move(rhs));
+}
+
+NdArray operator>=(NdArray&& lhs, const NdArray& rhs) {
+    return GreaterEqual(std::move(lhs), rhs);
+}
+
+NdArray operator<(NdArray&& lhs, NdArray&& rhs) {
+    return Less(std::move(lhs), std::move(rhs));
+}
+
+NdArray operator<(const NdArray& lhs, NdArray&& rhs) {
+    return Less(lhs, std::move(rhs));
+}
+
+NdArray operator<(NdArray&& lhs, const NdArray& rhs) {
+    return Less(std::move(lhs), rhs);
+}
+
+NdArray operator<=(NdArray&& lhs, NdArray&& rhs) {
+    return LessEqual(std::move(lhs), std::move(rhs));
+}
+
+NdArray operator<=(const NdArray& lhs, NdArray&& rhs) {
+    return LessEqual(lhs, std::move(rhs));
+}
+
+NdArray operator<=(NdArray&& lhs, const NdArray& rhs) {
+    return LessEqual(std::move(lhs), rhs);
+}
+
+// Comparison (NdArray, float)
+NdArray operator==(NdArray&& lhs, float rhs) {
+    return Equal(std::move(lhs), rhs);
+}
+
+NdArray operator!=(NdArray&& lhs, float rhs) {
+    return NotEqual(std::move(lhs), rhs);
+}
+
+NdArray operator>(NdArray&& lhs, float rhs) {
+    return Greater(std::move(lhs), rhs);
+}
+
+NdArray operator>=(NdArray&& lhs, float rhs) {
+    return GreaterEqual(std::move(lhs), rhs);
+}
+
+NdArray operator<(NdArray&& lhs, float rhs) {
+    return Less(std::move(lhs), rhs);
+}
+
+NdArray operator<=(NdArray&& lhs, float rhs) {
+    return LessEqual(std::move(lhs), rhs);
+}
+
+// Comparison (float, NdArray)
+NdArray operator==(float lhs, NdArray&& rhs) {
+    return Equal(lhs, std::move(rhs));
+}
+
+NdArray operator!=(float lhs, NdArray&& rhs) {
+    return NotEqual(lhs, std::move(rhs));
+}
+
+NdArray operator>(float lhs, NdArray&& rhs) {
+    return Greater(lhs, std::move(rhs));
+}
+
+NdArray operator>=(float lhs, NdArray&& rhs) {
+    return GreaterEqual(lhs, std::move(rhs));
+}
+
+NdArray operator<(float lhs, NdArray&& rhs) {
+    return Less(lhs, std::move(rhs));
+}
+
+NdArray operator<=(float lhs, NdArray&& rhs) {
+    return LessEqual(lhs, std::move(rhs));
 }
 
 // Compound Assignment (NdArray, NdArray)
