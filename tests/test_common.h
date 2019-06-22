@@ -837,6 +837,37 @@ TEST_CASE("NdArray") {
                        " [-3, -4, -5]]");
     }
 
+    SECTION("Comparison operators (ndarray, ndarray)") {
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
+        auto m2 = NdArray::Arange(2.f).reshape(2, 1) + 3.f;
+        RequireNdArray(m1 == m2,
+                       "[[0, 0, 0],\n"
+                       " [0, 1, 0]]");
+        RequireNdArray(m1 != m2,
+                       "[[1, 1, 1],\n"
+                       " [1, 0, 1]]");
+    }
+
+    SECTION("Comparison operators (ndarray, float)") {
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
+        RequireNdArray(m1 == 1.f,
+                       "[[0, 1, 0],\n"
+                       " [0, 0, 0]]");
+        RequireNdArray(m1 != 1.f,
+                       "[[1, 0, 1],\n"
+                       " [1, 1, 1]]");
+    }
+
+    SECTION("Comparison operators (float, ndarray)") {
+        auto m1 = NdArray::Arange(6.f).reshape(2, 3);
+        RequireNdArray(1.f == m1,
+                       "[[0, 1, 0],\n"
+                       " [0, 0, 0]]");
+        RequireNdArray(1.f != m1,
+                       "[[1, 0, 1],\n"
+                       " [1, 1, 1]]");
+    }
+
     // --------------------------- Operator function ---------------------------
     SECTION("Function Arithmetic (NdArray, NdArray)") {
         auto m1 = NdArray::Arange(6.f).reshape(2, 3);

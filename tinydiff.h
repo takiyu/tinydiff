@@ -171,6 +171,12 @@ NdArray operator*=(NdArray& lhs, float rhs);
 NdArray operator/=(NdArray& lhs, float rhs);
 NdArray operator+(const NdArray& x);
 NdArray operator-(const NdArray& x);
+NdArray operator==(const NdArray& lhs, const NdArray& rhs);
+NdArray operator!=(const NdArray& lhs, const NdArray& rhs);
+NdArray operator==(const NdArray& lhs, float rhs);
+NdArray operator!=(const NdArray& lhs, float rhs);
+NdArray operator==(float lhs, const NdArray& rhs);
+NdArray operator!=(float lhs, const NdArray& rhs);
 
 // ---------------------------- Operator Functions -----------------------------
 // Arithmetic operators (NdArray, NdArray)
@@ -219,6 +225,13 @@ NdArray Sum(const NdArray& x, const Axes& axes = {});
 NdArray Min(const NdArray& x, const Axes& axes = {});
 NdArray Max(const NdArray& x, const Axes& axes = {});
 NdArray Mean(const NdArray& x, const Axes& axes = {});
+// Comparison operators
+NdArray Equal(const NdArray& lhs, const NdArray& rhs);
+NdArray NotEqual(const NdArray& lhs, const NdArray& rhs);
+NdArray Equal(const NdArray& lhs, float rhs);
+NdArray NotEqual(const NdArray& lhs, float rhs);
+NdArray Equal(float lhs, const NdArray& rhs);
+NdArray NotEqual(float lhs, const NdArray& rhs);
 
 // =============================================================================
 // ================================== Variable =================================
@@ -1713,6 +1726,30 @@ NdArray operator-(const NdArray& x) {
     return ApplySingleOp(x, [](float v) { return -v; });
 }
 
+NdArray operator==(const NdArray& lhs, const NdArray& rhs) {
+    return Equal(lhs, rhs);
+}
+
+NdArray operator!=(const NdArray& lhs, const NdArray& rhs) {
+    return NotEqual(lhs, rhs);
+}
+
+NdArray operator==(const NdArray& lhs, float rhs) {
+    return Equal(lhs, rhs);
+}
+
+NdArray operator!=(const NdArray& lhs, float rhs) {
+    return NotEqual(lhs, rhs);
+}
+
+NdArray operator==(float lhs, const NdArray& rhs) {
+    return Equal(lhs, rhs);
+}
+
+NdArray operator!=(float lhs, const NdArray& rhs) {
+    return NotEqual(lhs, rhs);
+}
+
 // ---------------------------- Operator Functions -----------------------------
 // Arithmetic operators (NdArray, NdArray)
 NdArray Add(const NdArray& lhs, const NdArray& rhs) {
@@ -1885,6 +1922,31 @@ NdArray Mean(const NdArray& x, const Axes& axes) {
     auto&& sum = Sum(x, axes);
     float denom = x.size() / sum.size();
     return sum / denom;
+}
+
+// Comparison operators
+NdArray Equal(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, [](float a, float b) { return a == b; } );
+}
+
+NdArray NotEqual(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, [](float a, float b) { return a != b; } );
+}
+
+NdArray Equal(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, [](float a, float b) { return a == b; } );
+}
+
+NdArray NotEqual(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, [](float a, float b) { return a != b; } );
+}
+
+NdArray Equal(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, [](float a, float b) { return a == b; } );
+}
+
+NdArray NotEqual(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, [](float a, float b) { return a != b; } );
 }
 
 // =============================================================================
