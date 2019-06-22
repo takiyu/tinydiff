@@ -240,10 +240,10 @@ NdArray Mean(const NdArray& x, const Axes& axes = {});
 // Comparison operators
 NdArray Equal(const NdArray& lhs, const NdArray& rhs);
 NdArray NotEqual(const NdArray& lhs, const NdArray& rhs);
-NdArray Greater(const NdArray& lhs, const NdArray& rhs);      // >
-NdArray GreaterEqual(const NdArray& lhs, const NdArray& rhs); // >=
-NdArray Less(const NdArray& lhs, const NdArray& rhs);         // <
-NdArray LessEqual(const NdArray& lhs, const NdArray& rhs);    // <=
+NdArray Greater(const NdArray& lhs, const NdArray& rhs);       // >
+NdArray GreaterEqual(const NdArray& lhs, const NdArray& rhs);  // >=
+NdArray Less(const NdArray& lhs, const NdArray& rhs);          // <
+NdArray LessEqual(const NdArray& lhs, const NdArray& rhs);     // <=
 NdArray Equal(const NdArray& lhs, float rhs);
 NdArray NotEqual(const NdArray& lhs, float rhs);
 NdArray Greater(const NdArray& lhs, float rhs);
@@ -1075,11 +1075,15 @@ NdArray::NdArray(std::shared_ptr<Substance> sub) : m_sub(sub) {}
 
 NdArray::NdArray(const NdArray& lhs) = default;  // shallow copy
 
-NdArray::NdArray(NdArray&& lhs) noexcept : m_sub(lhs.m_sub) {}  // move
+NdArray::NdArray(NdArray&& lhs) noexcept
+    : m_sub(std::move(lhs.m_sub)) {}  // move
 
 NdArray& NdArray::operator=(const NdArray& lhs) = default;  // shallow copy
 
-NdArray& NdArray::operator=(NdArray&&) = default;
+NdArray& NdArray::operator=(NdArray&& lhs) {  // move
+    m_sub = std::move(lhs.m_sub);
+    return *this;
+}
 
 NdArray::~NdArray() = default;
 
@@ -2078,11 +2082,15 @@ Variable::Variable(std::shared_ptr<Substance> sub) : m_sub(sub) {}
 
 Variable::Variable(const Variable& lhs) = default;  // shallow copy
 
-Variable::Variable(Variable&& lhs) noexcept : m_sub(lhs.m_sub) {}  // move
+Variable::Variable(Variable&& lhs) noexcept
+    : m_sub(std::move(lhs.m_sub)) {}  // move
 
 Variable& Variable::operator=(const Variable& lhs) = default;  // shallow copy
 
-Variable& Variable::operator=(Variable&&) = default;
+Variable& Variable::operator=(Variable&& lhs) {  // move
+    m_sub = std::move(lhs.m_sub);
+    return *this;
+}
 
 Variable::~Variable() = default;
 
@@ -2195,11 +2203,15 @@ Function::Function(std::shared_ptr<Substance> sub) : m_sub(sub) {}
 
 Function::Function(const Function& lhs) = default;  // shallow copy
 
-Function::Function(Function&& lhs) noexcept : m_sub(lhs.m_sub) {}
+Function::Function(Function&& lhs) noexcept
+    : m_sub(std::move(lhs.m_sub)) {}  // move
 
 Function& Function::operator=(const Function& lhs) = default;  // shallow copy
 
-Function& Function::operator=(Function&&) = default;
+Function& Function::operator=(Function&& lhs) {  // move
+    m_sub = std::move(lhs.m_sub);
+    return *this;
+}
 
 Function::~Function() = default;
 
