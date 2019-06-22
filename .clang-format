@@ -7,7 +7,7 @@ BreakBeforeBraces: Attach
 AccessModifierOffset: -4
 Standard: Cpp11
 AlignOperands: true
-BreakBeforeTernaryOperators: false
+BreakBeforeTernaryOperators: true
 AllowShortIfStatementsOnASingleLine: true
 AllowShortCaseLabelsOnASingleLine: true
 AllowShortLoopsOnASingleLine: true
