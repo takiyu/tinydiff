@@ -149,6 +149,8 @@ private:
 // --------------------------------- Operators ---------------------------------
 std::ostream& operator<<(std::ostream& os, const NdArray& x);
 std::ostream& operator<<(std::ostream& os, const Shape& shape);
+NdArray operator+(const NdArray& x);
+NdArray operator-(const NdArray& x);
 NdArray operator+(const NdArray& lhs, const NdArray& rhs);
 NdArray operator-(const NdArray& lhs, const NdArray& rhs);
 NdArray operator*(const NdArray& lhs, const NdArray& rhs);
@@ -161,16 +163,6 @@ NdArray operator+(const float& lhs, const NdArray& rhs);
 NdArray operator-(const float& lhs, const NdArray& rhs);
 NdArray operator*(const float& lhs, const NdArray& rhs);
 NdArray operator/(const float& lhs, const NdArray& rhs);
-NdArray operator+=(NdArray& lhs, const NdArray& rhs);
-NdArray operator-=(NdArray& lhs, const NdArray& rhs);
-NdArray operator*=(NdArray& lhs, const NdArray& rhs);
-NdArray operator/=(NdArray& lhs, const NdArray& rhs);
-NdArray operator+=(NdArray& lhs, float rhs);
-NdArray operator-=(NdArray& lhs, float rhs);
-NdArray operator*=(NdArray& lhs, float rhs);
-NdArray operator/=(NdArray& lhs, float rhs);
-NdArray operator+(const NdArray& x);
-NdArray operator-(const NdArray& x);
 NdArray operator==(const NdArray& lhs, const NdArray& rhs);
 NdArray operator!=(const NdArray& lhs, const NdArray& rhs);
 NdArray operator>(const NdArray& lhs, const NdArray& rhs);
@@ -189,6 +181,15 @@ NdArray operator>(float lhs, const NdArray& rhs);
 NdArray operator>=(float lhs, const NdArray& rhs);
 NdArray operator<(float lhs, const NdArray& rhs);
 NdArray operator<=(float lhs, const NdArray& rhs);
+// ----------------------------- In-place Operators ----------------------------
+NdArray operator+=(NdArray& lhs, const NdArray& rhs);
+NdArray operator-=(NdArray& lhs, const NdArray& rhs);
+NdArray operator*=(NdArray& lhs, const NdArray& rhs);
+NdArray operator/=(NdArray& lhs, const NdArray& rhs);
+NdArray operator+=(NdArray& lhs, float rhs);
+NdArray operator-=(NdArray& lhs, float rhs);
+NdArray operator*=(NdArray& lhs, float rhs);
+NdArray operator/=(NdArray& lhs, float rhs);
 
 // ---------------------------- Operator Functions -----------------------------
 // Arithmetic operators (NdArray, NdArray)
@@ -206,6 +207,27 @@ NdArray Add(float lhs, const NdArray& rhs);
 NdArray Subtract(float lhs, const NdArray& rhs);
 NdArray Multiply(float lhs, const NdArray& rhs);
 NdArray Divide(float lhs, const NdArray& rhs);
+// Comparison operators (NdArray, NdArray)
+NdArray Equal(const NdArray& lhs, const NdArray& rhs);
+NdArray NotEqual(const NdArray& lhs, const NdArray& rhs);
+NdArray Greater(const NdArray& lhs, const NdArray& rhs);       // >
+NdArray GreaterEqual(const NdArray& lhs, const NdArray& rhs);  // >=
+NdArray Less(const NdArray& lhs, const NdArray& rhs);          // <
+NdArray LessEqual(const NdArray& lhs, const NdArray& rhs);     // <=
+// Comparison operators (NdArray, float)
+NdArray Equal(const NdArray& lhs, float rhs);
+NdArray NotEqual(const NdArray& lhs, float rhs);
+NdArray Greater(const NdArray& lhs, float rhs);
+NdArray GreaterEqual(const NdArray& lhs, float rhs);
+NdArray Less(const NdArray& lhs, float rhs);
+NdArray LessEqual(const NdArray& lhs, float rhs);
+// Comparison operators (float, NdArray)
+NdArray Equal(float lhs, const NdArray& rhs);
+NdArray NotEqual(float lhs, const NdArray& rhs);
+NdArray Greater(float lhs, const NdArray& rhs);
+NdArray GreaterEqual(float lhs, const NdArray& rhs);
+NdArray Less(float lhs, const NdArray& rhs);
+NdArray LessEqual(float lhs, const NdArray& rhs);
 // Matrix operators
 NdArray Dot(const NdArray& lhs, const NdArray& rhs);
 NdArray Dot(const NdArray& lhs, float rhs);
@@ -237,25 +259,7 @@ NdArray Sum(const NdArray& x, const Axes& axes = {});
 NdArray Min(const NdArray& x, const Axes& axes = {});
 NdArray Max(const NdArray& x, const Axes& axes = {});
 NdArray Mean(const NdArray& x, const Axes& axes = {});
-// Comparison operators
-NdArray Equal(const NdArray& lhs, const NdArray& rhs);
-NdArray NotEqual(const NdArray& lhs, const NdArray& rhs);
-NdArray Greater(const NdArray& lhs, const NdArray& rhs);       // >
-NdArray GreaterEqual(const NdArray& lhs, const NdArray& rhs);  // >=
-NdArray Less(const NdArray& lhs, const NdArray& rhs);          // <
-NdArray LessEqual(const NdArray& lhs, const NdArray& rhs);     // <=
-NdArray Equal(const NdArray& lhs, float rhs);
-NdArray NotEqual(const NdArray& lhs, float rhs);
-NdArray Greater(const NdArray& lhs, float rhs);
-NdArray GreaterEqual(const NdArray& lhs, float rhs);
-NdArray Less(const NdArray& lhs, float rhs);
-NdArray LessEqual(const NdArray& lhs, float rhs);
-NdArray Equal(float lhs, const NdArray& rhs);
-NdArray NotEqual(float lhs, const NdArray& rhs);
-NdArray Greater(float lhs, const NdArray& rhs);
-NdArray GreaterEqual(float lhs, const NdArray& rhs);
-NdArray Less(float lhs, const NdArray& rhs);
-NdArray LessEqual(float lhs, const NdArray& rhs);
+// ------------------------ In-place Operator Functions ------------------------
 
 // =============================================================================
 // ================================== Variable =================================
@@ -640,7 +644,7 @@ static NdArray ApplyElemWiseOp(const float& lhs, const NdArray& rhs, F op) {
     return ret;
 }
 
-// ----------- Utilities for NdArray (Broadcast element-wise inplace) ----------
+// ---------- Utilities for NdArray (Broadcast element-wise in-place) ----------
 template <typename F>
 static NdArray ApplyElemWiseOpInplcace(NdArray& lhs, const NdArray& rhs, F op) {
     if (lhs.shape() == rhs.shape()) {
@@ -657,7 +661,7 @@ static NdArray ApplyElemWiseOpInplcace(NdArray& lhs, const NdArray& rhs, F op) {
         // Check it is possible to broadcast
         const Shape& ret_shape = CheckBroadcastable(lhs.shape(), rhs.shape());
         if (ret_shape != lhs.shape()) {
-            throw std::runtime_error("Invalid shape for inplace operation");
+            throw std::runtime_error("Invalid shape for in-place operation");
         }
         // Wrap operator `float(float, float)` for pointer.
         auto wrapped_op = [&](float* o, const float* l, const float* r) {
@@ -1656,6 +1660,14 @@ template NdArray NdArray::slice(ISII, ISII, ISII, ISII, ISII, ISII, ISII, ISII,
                                 ISII, ISII, ISII) const;
 
 // --------------------------------- Operators ---------------------------------
+NdArray operator+(const NdArray& x) {
+    return x;
+}
+
+NdArray operator-(const NdArray& x) {
+    return ApplySingleOp(x, [](float v) { return -v; });
+}
+
 std::ostream& operator<<(std::ostream& os, const NdArray& x) {
     OutputNdArray(os, x);
     return os;
@@ -1712,46 +1724,6 @@ NdArray operator*(const float& lhs, const NdArray& rhs) {
 
 NdArray operator/(const float& lhs, const NdArray& rhs) {
     return Divide(lhs, rhs);
-}
-
-NdArray operator+=(NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::plus<float>());
-}
-
-NdArray operator-=(NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::minus<float>());
-}
-
-NdArray operator*=(NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::multiplies<float>());
-}
-
-NdArray operator/=(NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::divides<float>());
-}
-
-NdArray operator+=(NdArray& lhs, float rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::plus<float>());
-}
-
-NdArray operator-=(NdArray& lhs, float rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::minus<float>());
-}
-
-NdArray operator*=(NdArray& lhs, float rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::multiplies<float>());
-}
-
-NdArray operator/=(NdArray& lhs, float rhs) {
-    return ApplyElemWiseOpInplcace(lhs, rhs, std::divides<float>());
-}
-
-NdArray operator+(const NdArray& x) {
-    return x;
-}
-
-NdArray operator-(const NdArray& x) {
-    return ApplySingleOp(x, [](float v) { return -v; });
 }
 
 NdArray operator==(const NdArray& lhs, const NdArray& rhs) {
@@ -1826,6 +1798,39 @@ NdArray operator<=(float lhs, const NdArray& rhs) {
     return LessEqual(lhs, rhs);
 }
 
+// ----------------------------- In-place Operators ----------------------------
+NdArray operator+=(NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::plus<float>());
+}
+
+NdArray operator-=(NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::minus<float>());
+}
+
+NdArray operator*=(NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::multiplies<float>());
+}
+
+NdArray operator/=(NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::divides<float>());
+}
+
+NdArray operator+=(NdArray& lhs, float rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::plus<float>());
+}
+
+NdArray operator-=(NdArray& lhs, float rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::minus<float>());
+}
+
+NdArray operator*=(NdArray& lhs, float rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::multiplies<float>());
+}
+
+NdArray operator/=(NdArray& lhs, float rhs) {
+    return ApplyElemWiseOpInplcace(lhs, rhs, std::divides<float>());
+}
+
 // ---------------------------- Operator Functions -----------------------------
 // Arithmetic operators (NdArray, NdArray)
 NdArray Add(const NdArray& lhs, const NdArray& rhs) {
@@ -1876,6 +1881,81 @@ NdArray Multiply(float lhs, const NdArray& rhs) {
 
 NdArray Divide(float lhs, const NdArray& rhs) {
     return ApplyElemWiseOp(lhs, rhs, std::divides<float>());
+}
+
+// Comparison operators (NdArray, NdArray)
+NdArray Equal(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::equal_to<float>());
+}
+
+NdArray NotEqual(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::not_equal_to<float>());
+}
+
+NdArray Greater(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::greater<float>());
+}
+
+NdArray GreaterEqual(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::greater_equal<float>());
+}
+
+NdArray Less(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::less<float>());
+}
+
+NdArray LessEqual(const NdArray& lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::less_equal<float>());
+}
+
+// Comparison operators (NdArray, float)
+NdArray Equal(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::equal_to<float>());
+}
+
+NdArray NotEqual(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::not_equal_to<float>());
+}
+
+NdArray Greater(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::greater<float>());
+}
+
+NdArray GreaterEqual(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::greater_equal<float>());
+}
+
+NdArray Less(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::less<float>());
+}
+
+NdArray LessEqual(const NdArray& lhs, float rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::less_equal<float>());
+}
+
+// Comparison operators (float, NdArray)
+NdArray Equal(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::equal_to<float>());
+}
+
+NdArray NotEqual(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::not_equal_to<float>());
+}
+
+NdArray Greater(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::greater<float>());
+}
+
+NdArray GreaterEqual(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::greater_equal<float>());
+}
+
+NdArray Less(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::less<float>());
+}
+
+NdArray LessEqual(float lhs, const NdArray& rhs) {
+    return ApplyElemWiseOp(lhs, rhs, std::less_equal<float>());
 }
 
 // Matrix operators
@@ -1998,79 +2078,6 @@ NdArray Mean(const NdArray& x, const Axes& axes) {
     auto&& sum = Sum(x, axes);
     float denom = x.size() / sum.size();
     return sum / denom;
-}
-
-// Comparison operators
-NdArray Equal(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::equal_to<float>());
-}
-
-NdArray NotEqual(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::not_equal_to<float>());
-}
-
-NdArray Greater(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::greater<float>());
-}
-
-NdArray GreaterEqual(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::greater_equal<float>());
-}
-
-NdArray Less(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::less<float>());
-}
-
-NdArray LessEqual(const NdArray& lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::less_equal<float>());
-}
-
-NdArray Equal(const NdArray& lhs, float rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::equal_to<float>());
-}
-
-NdArray NotEqual(const NdArray& lhs, float rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::not_equal_to<float>());
-}
-
-NdArray Greater(const NdArray& lhs, float rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::greater<float>());
-}
-
-NdArray GreaterEqual(const NdArray& lhs, float rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::greater_equal<float>());
-}
-
-NdArray Less(const NdArray& lhs, float rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::less<float>());
-}
-
-NdArray LessEqual(const NdArray& lhs, float rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::less_equal<float>());
-}
-
-NdArray Equal(float lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::equal_to<float>());
-}
-
-NdArray NotEqual(float lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::not_equal_to<float>());
-}
-
-NdArray Greater(float lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::greater<float>());
-}
-
-NdArray GreaterEqual(float lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::greater_equal<float>());
-}
-
-NdArray Less(float lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::less<float>());
-}
-
-NdArray LessEqual(float lhs, const NdArray& rhs) {
-    return ApplyElemWiseOp(lhs, rhs, std::less_equal<float>());
 }
 
 // =============================================================================
