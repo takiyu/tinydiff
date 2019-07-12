@@ -29,6 +29,7 @@ namespace tinydiff {
 #define TINYNDARRAY_NO_NAMESPACE
 #include "./tinyndarray/tinyndarray.h"
 
+using NdArrays = std::vector<NdArray>;
 class Variable;
 using Variables = std::vector<Variable>;
 class Function;
@@ -50,11 +51,11 @@ public:
 
     NdArray data() const;
     NdArray grad() const;
-    void cleargrads();
     void backward();
 
     void setCreator(Function f);
     Function getCreator() const;
+    void clearGrads();
     void addGrad(const NdArray& grad);
 
     class Substance;
@@ -81,15 +82,14 @@ public:
     Function& operator=(Function&&);
     virtual ~Function();
 
+    // Clear all member variables
     void clear();
 
     // Build computational graph with forwarding
     Variables operator()(const Variables& x);
 
-    std::vector<NdArray> forward(const std::vector<NdArray>& x);
-    std::vector<NdArray> backward(const std::vector<NdArray>& x,
-                                  const std::vector<NdArray>& y,
-                                  const std::vector<NdArray>& gy);
+    NdArrays forward(const NdArrays& x);
+    NdArrays backward(const NdArrays& x, const NdArrays& y, const NdArrays& gy);
 
     Variables getInputs() const;
     Variables getOutputs() const;
@@ -136,7 +136,7 @@ Variable exp(Variable x);
 // -------------------------- Utilities for Variable ---------------------------
 // -----------------------------------------------------------------------------
 template <typename T>
-void CheckSize(const std::vector<T>& x, size_t n) {
+void CheckVecSize(const std::vector<T>& x, const size_t n) {
     if (x.size() != n) {
         throw std::runtime_error("Invalid vector size");
     }
@@ -150,37 +150,26 @@ V PopLast(std::map<K, V>& m) {
     return last;
 }
 
-static std::vector<NdArray> CvtFromVariables(const Variables& src) {
-    std::vector<NdArray> ret;
+template <typename DST, typename SRC, typename F>
+std::vector<DST> CvtVec(const std::vector<SRC>& src, F func) {
+    std::vector<DST> ret;
     ret.reserve(src.size());
     for (auto&& s_elem : src) {
-        ret.emplace_back(s_elem.data());
+        ret.emplace_back(func(s_elem));
     }
     return ret;
 }
 
-static Variables CvtToVariables(const std::vector<NdArray>& src) {
-    Variables ret;
-    ret.reserve(src.size());
-    for (auto&& s_elem : src) {
-        ret.emplace_back(Variable(s_elem));
-    }
-    return ret;
+static NdArrays GetData(const Variables& src) {
+    return CvtVec<NdArray>(src, [](const Variable& v) { return v.data(); });
 }
 
-static std::vector<NdArray> GetGrads(const Variables& src) {
-    std::vector<NdArray> ret;
-    ret.reserve(src.size());
-    for (auto&& s_elem : src) {
-        ret.emplace_back(s_elem.grad());
-    }
-    return ret;
+static NdArrays GetGrads(const Variables& src) {
+    return CvtVec<NdArray>(src, [](const Variable& v) { return v.grad(); });
 }
 
-static void ClearGrads(Variables& src) {
-    for (auto&& s_elem : src) {
-        s_elem.cleargrads();
-    }
+static Variables CvtToVars(const NdArrays& src) {
+    return CvtVec<Variable>(src, [](const NdArray& v) { return Variable(v); });
 }
 
 // =============================================================================
@@ -228,10 +217,6 @@ NdArray Variable::grad() const {
     return m_sub->grad;
 }
 
-void Variable::cleargrads() {
-    m_sub->grad = NdArray({0.f});
-}
-
 void Variable::backward() {
     // Set the last gradients 'one'
     for (auto&& output : m_sub->creator.getOutputs()) {
@@ -245,25 +230,23 @@ void Variable::backward() {
     // Resolving loop
     while (!cand_funcs.empty()) {
         // Get highest rank function
-        auto&& last_func = PopLast(cand_funcs);
+        Function last_func = PopLast(cand_funcs);
         // Ignore no connected function (already resolved)
         if (last_func.getRank() == 0) {
             continue;
         }
+
         // Call backward
-        auto&& inputs = last_func.getInputs();
-        auto&& outputs = last_func.getOutputs();
-        auto&& inputs_data = CvtFromVariables(inputs);
-        auto&& outputs_data = CvtFromVariables(outputs);
-        auto&& out_grads = GetGrads(outputs);
-        auto&& in_grads = last_func.backward(
-                std::move(inputs_data), std::move(outputs_data),
-                std::move(out_grads));  // with free
+        Variables inputs = last_func.getInputs();
+        Variables outputs = last_func.getOutputs();
+        NdArrays in_grads = last_func.backward(
+                GetData(inputs), GetData(outputs), GetGrads(outputs));
         assert(inputs.size() == in_grads.size());
         // Accumulate gradients
         for (size_t i = 0; i < inputs.size(); i++) {
             inputs[i].addGrad(in_grads[i]);
         }
+
         // Track chain
         for (size_t i = 0; i < inputs.size(); i++) {
             auto&& func = inputs[i].getCreator();
@@ -271,10 +254,13 @@ void Variable::backward() {
                 cand_funcs[func.getRank()] = func;
             }
         }
+
         // Remove chain (set rank 0)
         last_func.clear();
         // Remove used gradient
-        ClearGrads(outputs);
+        for (auto&& output : outputs) {
+            output.clearGrads();
+        }
     }
 }
 
@@ -285,6 +271,10 @@ void Variable::setCreator(Function f) {
 
 Function Variable::getCreator() const {
     return m_sub->creator;
+}
+
+void Variable::clearGrads() {
+    m_sub->grad = NdArray({0.f});
 }
 
 void Variable::addGrad(const NdArray& grad) {
@@ -329,13 +319,12 @@ Function::~Function() = default;
 class Function::Substance {
 public:
     virtual ~Substance() {}
-    virtual std::vector<NdArray> forward(const std::vector<NdArray>& x) {
+    virtual NdArrays forward(const NdArrays& x) {
         (void)x;
         throw std::runtime_error("Invalid use of tinydiff::Function");
     }
-    virtual std::vector<NdArray> backward(const std::vector<NdArray>& x,
-                                          const std::vector<NdArray>& y,
-                                          const std::vector<NdArray>& gy) {
+    virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
+                              const NdArrays& gy) {
         (void)x, (void)y, (void)gy;
         throw std::runtime_error("Invalid use of tinydiff::Function");
     }
@@ -352,9 +341,9 @@ void Function::clear() {
 
 Variables Function::operator()(const Variables& x) {
     // Forward (with variable conversion)
-    auto&& x_data = CvtFromVariables(x);
-    auto&& y_data = forward(std::move(x_data));    // with free
-    auto&& y = CvtToVariables(std::move(y_data));  // with free
+    auto&& x_data = GetData(x);
+    auto&& y_data = forward(std::move(x_data));  // with free
+    auto&& y = CvtToVars(std::move(y_data));     // with free
     // Retain input/output variables
     m_sub->inputs = x;
     m_sub->outputs = y;
@@ -373,13 +362,12 @@ Variables Function::operator()(const Variables& x) {
     return std::move(y);
 }
 
-std::vector<NdArray> Function::forward(const std::vector<NdArray>& x) {
+NdArrays Function::forward(const NdArrays& x) {
     return m_sub->forward(x);
 }
 
-std::vector<NdArray> Function::backward(const std::vector<NdArray>& x,
-                                        const std::vector<NdArray>& y,
-                                        const std::vector<NdArray>& gy) {
+NdArrays Function::backward(const NdArrays& x, const NdArrays& y,
+                            const NdArrays& gy) {
     return m_sub->backward(x, y, gy);
 }
 
@@ -408,16 +396,15 @@ namespace F {
 class AddSub : public Function::Substance {
 public:
     virtual ~AddSub() {}
-    virtual std::vector<NdArray> forward(const std::vector<NdArray>& x) {
-        CheckSize(x, 2);
+    virtual NdArrays forward(const NdArrays& x) {
+        CheckVecSize(x, 2);
         return {x[0] + x[1]};
     }
-    virtual std::vector<NdArray> backward(const std::vector<NdArray>& x,
-                                          const std::vector<NdArray>& y,
-                                          const std::vector<NdArray>& gy) {
-        CheckSize(x, 2);
-        CheckSize(y, 1);
-        CheckSize(gy, 1);
+    virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
+                              const NdArrays& gy) {
+        CheckVecSize(x, 2);
+        CheckVecSize(y, 1);
+        CheckVecSize(gy, 1);
         return {gy[0], gy[0]};
     }
 };
@@ -425,16 +412,15 @@ public:
 class MulSub : public Function::Substance {
 public:
     virtual ~MulSub() {}
-    virtual std::vector<NdArray> forward(const std::vector<NdArray>& x) {
-        CheckSize(x, 2);
+    virtual NdArrays forward(const NdArrays& x) {
+        CheckVecSize(x, 2);
         return {x[0] * x[1]};
     }
-    virtual std::vector<NdArray> backward(const std::vector<NdArray>& x,
-                                          const std::vector<NdArray>& y,
-                                          const std::vector<NdArray>& gy) {
-        CheckSize(x, 2);
-        CheckSize(y, 1);
-        CheckSize(gy, 1);
+    virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
+                              const NdArrays& gy) {
+        CheckVecSize(x, 2);
+        CheckVecSize(y, 1);
+        CheckVecSize(gy, 1);
         return {gy[0] * x[1], gy[0] * x[0]};
     }
 };
@@ -442,16 +428,15 @@ public:
 class ExpSub : public Function::Substance {
 public:
     virtual ~ExpSub() {}
-    virtual std::vector<NdArray> forward(const std::vector<NdArray>& x) {
-        CheckSize(x, 1);
+    virtual NdArrays forward(const NdArrays& x) {
+        CheckVecSize(x, 1);
         return {Exp(x[0])};
     }
-    virtual std::vector<NdArray> backward(const std::vector<NdArray>& x,
-                                          const std::vector<NdArray>& y,
-                                          const std::vector<NdArray>& gy) {
-        CheckSize(x, 1);
-        CheckSize(y, 1);
-        CheckSize(gy, 1);
+    virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
+                              const NdArrays& gy) {
+        CheckVecSize(x, 1);
+        CheckVecSize(y, 1);
+        CheckVecSize(gy, 1);
         return {gy[0] * y[0]};
     }
 };

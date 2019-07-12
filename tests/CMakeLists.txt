@@ -111,4 +111,5 @@ setup_target(tinydiff_tests_separated "" "${CMAKE_THREAD_LIBS_INIT}")
 add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/../tinydiff.h
     COMMAND python3 gen_header.py
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../generator"
+    DEPENDS ../generator/tinydiff.h
 )

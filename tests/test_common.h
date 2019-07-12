@@ -6,7 +6,7 @@ using namespace tinydiff;
 
 TEST_CASE("AutoGrad") {
     SECTION("Basic") {
-        Variable a(NdArray{{1.f, 10.f}});
+        Variable a(NdArray{{{1.f, 10.f}, {2.f, 3.f}}});
         Variable b({2.f, 20.f});
 
         Variable c, d, e;
