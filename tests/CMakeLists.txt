@@ -49,7 +49,8 @@ elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
                          -Wold-style-cast -Woverloaded-virtual \
                          -Wredundant-decls -Wshadow -Wsign-conversion \
                          -Wsign-promo  -Wno-old-style-cast\
-                         -Wstrict-overflow=5 -Wundef -Wno-unknown-pragmas")
+                         -Wstrict-overflow=5 -Wundef -Wno-unknown-pragmas \
+                         -Wreturn-std-move")
 elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
     set(warning_options "--pedantic -Wall -Wextra -Wcast-align -Wcast-qual \
                          -Wctor-dtor-privacy -Wdisabled-optimization \
@@ -85,15 +86,29 @@ endfunction(setup_target_simple)
 # ----------------------------- Internal Libraries -----------------------------
 # ------------------------------------------------------------------------------
 
+find_package(Threads)
+set(tinydiff_header ${CMAKE_CURRENT_SOURCE_DIR}/../tinydiff.h)
+
 # Executable file for tests (one c++ file)
 add_executable(tinydiff_tests
+    ${tinydiff_header}
     ${CMAKE_CURRENT_SOURCE_DIR}/test_total.cpp
 )
-setup_target(tinydiff_tests "" "")
+setup_target(tinydiff_tests "" "${CMAKE_THREAD_LIBS_INIT}")
 
 # Executable file for tests (separated c++ files)
 add_executable(tinydiff_tests_separated
+    ${tinydiff_header}
     ${CMAKE_CURRENT_SOURCE_DIR}/test_separated_1.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_separated_2.cpp
 )
-setup_target(tinydiff_tests_separated "" "")
+setup_target(tinydiff_tests_separated "" "${CMAKE_THREAD_LIBS_INIT}")
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------- Custom Commands ------------------------------
+# ------------------------------------------------------------------------------
+add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/../tinydiff.h
+    COMMAND python3 gen_header.py
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../generator"
+)

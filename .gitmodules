@@ -1,3 +1,6 @@
 [submodule "tests/Catch2"]
 	path = tests/Catch2
 	url = https://github.com/catchorg/Catch2
+[submodule "generator/tinyndarray"]
+	path = generator/tinyndarray
+	url = https://github.com/takiyu/tinyndarray
