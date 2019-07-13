@@ -3567,6 +3567,15 @@ void CheckVecSize(const std::vector<T>& x, const size_t n) {
     }
 }
 
+template <typename T>
+void CheckVecSize(const std::vector<T>& x0, const size_t n0,
+                  const std::vector<T>& x1, const size_t n1,
+                  const std::vector<T>& x2, const size_t n2) {
+    CheckVecSize(x0, n0);
+    CheckVecSize(x1, n1);
+    CheckVecSize(x2, n2);
+}
+
 template <typename K, typename V>
 V PopLast(std::map<K, V>& m) {
     auto&& last_itr = std::prev(m.end());
@@ -3827,9 +3836,7 @@ public:
     }
     virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
                               const NdArrays& gy) {
-        CheckVecSize(x, 2);
-        CheckVecSize(y, 1);
-        CheckVecSize(gy, 1);
+        CheckVecSize(x, 2, y, 1, gy, 1);
         return {gy[0], gy[0]};
     }
 };
@@ -3843,9 +3850,7 @@ public:
     }
     virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
                               const NdArrays& gy) {
-        CheckVecSize(x, 2);
-        CheckVecSize(y, 1);
-        CheckVecSize(gy, 1);
+        CheckVecSize(x, 2, y, 1, gy, 1);
         return {gy[0] * x[1], gy[0] * x[0]};
     }
 };
@@ -3859,9 +3864,7 @@ public:
     }
     virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
                               const NdArrays& gy) {
-        CheckVecSize(x, 1);
-        CheckVecSize(y, 1);
-        CheckVecSize(gy, 1);
+        CheckVecSize(x, 1, y, 1, gy, 1);
         return {gy[0] * y[0]};
     }
 };
