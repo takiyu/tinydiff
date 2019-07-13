@@ -146,10 +146,10 @@ public:
     NdArray dot(float other) const;
     NdArray cross(const NdArray& other) const;
 
-    NdArray sum(const Axis& axes = {}) const;
-    NdArray min(const Axis& axes = {}) const;
-    NdArray max(const Axis& axes = {}) const;
-    NdArray mean(const Axis& axes = {}) const;
+    NdArray sum(const Axis& axes = {}, bool keepdims = false) const;
+    NdArray min(const Axis& axes = {}, bool keepdims = false) const;
+    NdArray max(const Axis& axes = {}, bool keepdims = false) const;
+    NdArray mean(const Axis& axes = {}, bool keepdims = false) const;
 
     // Parameters
     static constexpr int DOT_CACHE_SCALE = 10;  // depends on situation and CPU
@@ -392,15 +392,15 @@ NdArray ArcTan2(const NdArray& y, const NdArray& x);
 NdArray ArcTan2(const NdArray& y, float x);
 NdArray ArcTan2(float y, const NdArray& x);
 // Axis functions
-NdArray Sum(const NdArray& x, const Axis& axes = {});
-NdArray Min(const NdArray& x, const Axis& axes = {});
-NdArray Max(const NdArray& x, const Axis& axes = {});
-NdArray Mean(const NdArray& x, const Axis& axes = {});
+NdArray Sum(const NdArray& x, const Axis& axes = {}, bool keepdims = false);
+NdArray Min(const NdArray& x, const Axis& axes = {}, bool keepdims = false);
+NdArray Max(const NdArray& x, const Axis& axes = {}, bool keepdims = false);
+NdArray Mean(const NdArray& x, const Axis& axes = {}, bool keepdims = false);
 // Logistic functions
 bool All(const NdArray& x);
 bool Any(const NdArray& x);
-NdArray All(const NdArray& x, const Axis& axes);
-NdArray Any(const NdArray& x, const Axis& axes);
+NdArray All(const NdArray& x, const Axis& axes, bool keepdims = false);
+NdArray Any(const NdArray& x, const Axis& axes, bool keepdims = false);
 NdArray Where(const NdArray& cond, const NdArray& x, const NdArray& y);
 NdArray Where(const NdArray& cond, const NdArray& x, float y);
 NdArray Where(const NdArray& cond, float x, const NdArray& y);
@@ -1241,7 +1241,8 @@ static NdArray ApplyWhereOpInplace(NdArray&& cond, float x, float y) {
 }
 
 // ------------------- Utilities for NdArray (Axis reduction) ------------------
-static auto CheckReductable(const Shape& shape, const Axis& axes) {
+static Shape CheckReductable(const Shape& shape, const Axis& axes,
+                             bool keepdims) {
     // Mark reduction axes
     std::vector<char> mark(shape.size(), false);
     const int n_shape = static_cast<int>(shape.size());
@@ -1253,86 +1254,51 @@ static auto CheckReductable(const Shape& shape, const Axis& axes) {
         }
     }
 
-    // Pick up unmarked dimension
-    Shape ret_shape;
-    Shape ret_shape_pad;
-    for (size_t i = 0; i < mark.size(); i++) {
-        if (mark[i]) {
-            ret_shape_pad.push_back(1);
-        } else {
-            ret_shape.push_back(shape[i]);
-            ret_shape_pad.push_back(shape[i]);
-        }
-    }
-    return std::tuple<Shape, Shape>(std::move(ret_shape),
-                                    std::move(ret_shape_pad));
-}
-
-static int ComputeReducedIndex(int src_idx,
-                               const std::vector<int>& ret_child_sizes,
-                               const std::vector<int>& src_child_sizes,
-                               const Axis& sorted_axes) {
-    // Convert source index to result index
-    // [2, (3), 4, (5), 6]
-    int ret_idx = 0;
-    for (auto&& axis : sorted_axes) {
-        if (axis == 0) {
-            continue;  // No upper dimension
-        }
-        const size_t axis_l = static_cast<size_t>(axis);
-        // Accumulate upper dimension
-        const int ret_idx_base = src_idx / src_child_sizes[axis_l - 1];
-        ret_idx += ret_idx_base * ret_child_sizes[axis_l];
-        // Remove processed dimension
-        src_idx = src_idx % src_child_sizes[axis_l];
-    }
-
-    // Add rest dimension
-    const int last_axis = sorted_axes.back();
-    ret_idx += src_idx % src_child_sizes[static_cast<size_t>(last_axis)];
-
-    return ret_idx;
-}
-
-static void ReduceShapesReduction(Shape& ret_shape, Shape& src_shape,
-                                  Axis& sorted_axes) {
-    // Require `ret_shape.size() == src_shape.size()`
-
-    // Remove meaningless dimensions.
-    Shape ret_shape_cleaned, src_shape_cleaned;
-    int size_pool = 1;
-    size_t depth = 0;
-    size_t axis_idx = 0;
-    for (; depth < ret_shape.size(); depth++) {
-        if (ret_shape[depth] == src_shape[depth]) {
-            // Store
-            size_pool *= ret_shape[depth];
-        } else {
-            // Pop
-            if (size_pool != 1) {
-                ret_shape_cleaned.push_back(size_pool);
-                src_shape_cleaned.push_back(size_pool);
-                size_pool = 1;
+    if (keepdims) {
+        // Pick up unmarked dimension
+        Shape ret_shape_pad;
+        for (size_t i = 0; i < mark.size(); i++) {
+            if (mark[i]) {
+                ret_shape_pad.push_back(1);
+            } else {
+                ret_shape_pad.push_back(shape[i]);
             }
-            // Through current dimension
-            ret_shape_cleaned.push_back(ret_shape[depth]);
-            src_shape_cleaned.push_back(src_shape[depth]);
-            // Adjust axis
-            sorted_axes[axis_idx++] =
-                    static_cast<int>(ret_shape_cleaned.size()) - 1;
+        }
+        return ret_shape_pad;
+    } else {
+        // No necessary
+        return {};
+    }
+}
+
+static auto ComputeReduceSizes(const Shape& src_shape, const size_t axis) {
+    // Compute result shape
+    Shape ret_shape;
+    for (size_t dim = 0; dim < src_shape.size(); dim++) {
+        if (dim != axis) {
+            ret_shape.push_back(src_shape[dim]);
         }
     }
-    // Pop
-    if (size_pool != 1) {
-        ret_shape_cleaned.push_back(size_pool);
-        src_shape_cleaned.push_back(size_pool);
+    if (ret_shape.empty()) {  // For all reduction
+        ret_shape.push_back(1);
     }
-    if (axis_idx != sorted_axes.size() - 1) {
-        sorted_axes[axis_idx] = static_cast<int>(ret_shape_cleaned.size()) - 1;
+
+    // Compute sizes
+    int upper_size = 1, lower_size = 1, n_reduce = 0;
+    for (size_t dim = 0; dim < src_shape.size(); dim++) {
+        // Sizes
+        if (dim < axis) {
+            upper_size *= src_shape[dim];
+        } else if (axis < dim) {
+            lower_size *= src_shape[dim];
+        } else {
+            n_reduce = src_shape[dim];
+        }
     }
+
     // Return
-    ret_shape = std::move(ret_shape_cleaned);
-    src_shape = std::move(src_shape_cleaned);
+    return std::make_tuple(std::move(ret_shape), upper_size, lower_size,
+                           n_reduce);
 }
 
 template <typename F>
@@ -1345,90 +1311,103 @@ float ReduceAxisAll(const NdArray::ConstIter& data, const size_t size,
 }
 
 template <typename F>
-void ReduceAxisImpl(const NdArray::Iter& ret_data,
-                    const NdArray::ConstIter& src_data,
-                    const std::vector<int>& ret_child_sizes,
-                    const std::vector<int>& src_child_sizes,
-                    const Shape& src_shape, const int src_size,
-                    const Axis& sorted_axes, F reduce_op) {
-    // TODO: Replace with more effective implementation.
+NdArray ReduceAxisOne(const NdArray& src, const size_t axis, const float init_v,
+                      F reduce_op) {
+    const Shape& src_shape = src.shape();
 
-    // Common reduce function with src_idx
-    auto&& reduce = [&](int src_idx) {
-        // Result index
-        const int ret_idx = ComputeReducedIndex(src_idx, ret_child_sizes,
-                                                src_child_sizes, sorted_axes);
-        // Reduce one source element
-        float& ret_v = ret_data[ret_idx];
-        ret_v = reduce_op(ret_v, src_data[src_idx]);
+    // Compute sizes
+    auto reduce_sizes = ComputeReduceSizes(src_shape, axis);
+    const Shape& ret_shape = std::get<0>(reduce_sizes);
+    const int upper_size = std::get<1>(reduce_sizes);
+    const int lower_size = std::get<2>(reduce_sizes);
+    const int n_reduce = std::get<3>(reduce_sizes);
+
+    // Create result array with fill
+    NdArray ret(ret_shape, init_v);
+
+    auto&& src_data = src.data();
+    auto&& ret_data = ret.data();
+
+    // Reduce function
+    auto&& reduce = [=](int u_idx) {
+        const int ret_idx_base = u_idx * lower_size;
+        const int src_idx_base0 = u_idx * n_reduce * lower_size;
+        for (int r_idx = 0; r_idx < n_reduce; r_idx++) {
+            const int src_idx_base1 = src_idx_base0 + r_idx * lower_size;
+            for (int l_idx = 0; l_idx < lower_size; l_idx++) {
+                // Reduce
+                float& r = ret_data[ret_idx_base + l_idx];
+                const float s = src_data[src_idx_base1 + l_idx];
+                r = reduce_op(r, s);
+            }
+        }
     };
 
-    // Try top-dim parallelization.
-    // When axis 0 will be reduced, it cannot be in parallel.
-    if (sorted_axes[0] == 0) {
-        // Run sequentially
-        for (int src_idx = 0; src_idx < src_size; src_idx++) {
-            reduce(src_idx);
-        }
-    } else {
-        // Run in parallel
-        const int& n_parallel = src_shape[0];
-        RunParallel(n_parallel, [&](int para_idx) {
-            const int n_sub = src_child_sizes[0];
-            const int base_idx = para_idx * n_sub;
-            for (int sub_idx = 0; sub_idx < n_sub; sub_idx++) {
-                const int src_idx = base_idx + sub_idx;
-                reduce(src_idx);
-            }
-        });
+    // TODO: Run parallel for `axis == 0` (means `upper_size == 1`)
+
+#if 1  // Run in parallel
+    RunParallel(upper_size, reduce);
+#else  // Run sequentially
+    for (int u_idx = 0; u_idx < upper_size; u_idx++) {
+        reduce(u_idx);
     }
+#endif
+    return ret;
 }
 
 template <typename F>
-NdArray ReduceAxis(const NdArray& src, const Axis& axes, const float init_v,
-                   F reduce_op) {
+NdArray ReduceAxis(const NdArray& src, const Axis& axes, bool keepdims,
+                   const float init_v, F reduce_op) {
     if (axes.size() == 0) {
         // No Axis -> Reduce all
-        return {ReduceAxisAll(src.data(), src.size(), init_v, reduce_op)};
+        float ret_v = ReduceAxisAll(src.data(), src.size(), init_v, reduce_op);
+        NdArray ret = {ret_v};
+        // Reshape for keepdims
+        if (keepdims) {
+            Shape ret_shape(src.shape().size(), 1);
+            ret = ret.reshape(ret_shape);
+        }
+        return ret;
     } else {
         // Check it is possible to reduce.
         Shape src_shape = src.shape();
-        const auto& ret_shapes = CheckReductable(src_shape, axes);
-        const Shape& ret_shape = std::get<0>(ret_shapes);
-        Shape ret_shape_pad = std::get<1>(ret_shapes);
+        const Shape& ret_shape_pad = CheckReductable(src_shape, axes, keepdims);
 
         // Sort axes
         Axis sorted_axes = axes;
         std::sort(sorted_axes.begin(), sorted_axes.end());
 
-        // Remove extra dimensions of shapes
-        ReduceShapesReduction(ret_shape_pad, src_shape, sorted_axes);
+        // Reduce axes one by one
+        NdArray ret;
+        for (size_t i = 0; i < axes.size(); i++) {
+            // From back
+            const size_t axis = static_cast<size_t>(
+                    sorted_axes[axes.size() - i - 1]);
+            // Reduce
+            if (i == 0) {
+                ret = ReduceAxisOne(src, axis, init_v, reduce_op);
+            } else {
+                ret = ReduceAxisOne(ret, axis, init_v, reduce_op);
+            }
+        }
 
-        // Pre-compute child sizes
-        const auto& ret_child_sizes = ComputeChildSizes(ret_shape_pad);
-        const auto& src_child_sizes = ComputeChildSizes(src_shape);
-
-        // Result array with value initialization
-        NdArray ret(ret_shape, init_v);
-
-        // Reduce
-        ReduceAxisImpl(ret.data(), src.data(), ret_child_sizes, src_child_sizes,
-                       src_shape, static_cast<int>(src.size()), sorted_axes,
-                       reduce_op);
-
+        // Reshape for keepdims
+        if (keepdims) {
+            ret = ret.reshape(ret_shape_pad);
+        }
         return ret;
     }
 }
 
 template <typename F>
-NdArray ReduceAxisNoEmpty(const NdArray& src, const Axis& axes,
+NdArray ReduceAxisNoEmpty(const NdArray& src, const Axis& axes, bool keepdims,
                           const float init_v, F reduce_op) {
     // Check empty
     if (src.size() == 0) {
         throw std::runtime_error("zero-size array to reduction operation");
     }
     // Call normally
-    return ReduceAxis(src, axes, init_v, reduce_op);
+    return ReduceAxis(src, axes, keepdims, init_v, reduce_op);
 }
 
 // ----------------------- Utilities for NdArray (Print) -----------------------
@@ -2404,20 +2383,20 @@ NdArray NdArray::cross(const NdArray& other) const {
 }
 
 // -------------------------------- Axis Method --------------------------------
-NdArray NdArray::sum(const Axis& axes) const {
-    return Sum(*this, axes);
+NdArray NdArray::sum(const Axis& axes, bool keepdims) const {
+    return Sum(*this, axes, keepdims);
 }
 
-NdArray NdArray::min(const Axis& axes) const {
-    return Min(*this, axes);
+NdArray NdArray::min(const Axis& axes, bool keepdims) const {
+    return Min(*this, axes, keepdims);
 }
 
-NdArray NdArray::max(const Axis& axes) const {
-    return Max(*this, axes);
+NdArray NdArray::max(const Axis& axes, bool keepdims) const {
+    return Max(*this, axes, keepdims);
 }
 
-NdArray NdArray::mean(const Axis& axes) const {
-    return Mean(*this, axes);
+NdArray NdArray::mean(const Axis& axes, bool keepdims) const {
+    return Mean(*this, axes, keepdims);
 }
 
 // ---------------------- Template Method Specializations ----------------------
@@ -3141,46 +3120,48 @@ NdArray ArcTan2(float y, const NdArray& x) {
 }
 
 // Axis functions
-NdArray Sum(const NdArray& x, const Axis& axes) {
-    return ReduceAxis(x, axes, 0.f, std::plus<float>());
+NdArray Sum(const NdArray& x, const Axis& axes, bool keepdims) {
+    return ReduceAxis(x, axes, keepdims, 0.f, std::plus<float>());
 }
 
-NdArray Min(const NdArray& x, const Axis& axes) {
-    return ReduceAxisNoEmpty(x, axes, std::numeric_limits<float>::max(),
+NdArray Min(const NdArray& x, const Axis& axes, bool keepdims) {
+    return ReduceAxisNoEmpty(x, axes, keepdims,
+                             std::numeric_limits<float>::max(),
                              [](float a, float b) { return std::min(a, b); });
 }
 
-NdArray Max(const NdArray& x, const Axis& axes) {
-    return ReduceAxisNoEmpty(x, axes, -std::numeric_limits<float>::max(),
+NdArray Max(const NdArray& x, const Axis& axes, bool keepdims) {
+    return ReduceAxisNoEmpty(x, axes, keepdims,
+                             -std::numeric_limits<float>::max(),
                              [](float a, float b) { return std::max(a, b); });
 }
 
-NdArray Mean(const NdArray& x, const Axis& axes) {
+NdArray Mean(const NdArray& x, const Axis& axes, bool keepdims) {
     if (x.size() == 0) {
         return {std::numeric_limits<float>::quiet_NaN()};
     }
-    auto&& sum = Sum(x, axes);
+    auto&& sum = Sum(x, axes, keepdims);
     return sum / static_cast<float>(x.size() / sum.size());
 }
 
 bool All(const NdArray& x) {
     // Cast to bool
-    return static_cast<float>(All(x, {})) == static_cast<float>(true);
+    return static_cast<float>(All(x, {}, false)) == static_cast<float>(true);
 }
 
 bool Any(const NdArray& x) {
     // Cast to bool
-    return static_cast<float>(Any(x, {})) == static_cast<float>(true);
+    return static_cast<float>(Any(x, {}, false)) == static_cast<float>(true);
 }
 
-NdArray All(const NdArray& x, const Axis& axes) {
-    return ReduceAxis(x, axes, 1.f, [](float a, float b) {
+NdArray All(const NdArray& x, const Axis& axes, bool keepdims) {
+    return ReduceAxis(x, axes, keepdims, 1.f, [](float a, float b) {
         return static_cast<bool>(a) && static_cast<bool>(b);
     });
 }
 
-NdArray Any(const NdArray& x, const Axis& axes) {
-    return ReduceAxis(x, axes, 0.f, [](float a, float b) {
+NdArray Any(const NdArray& x, const Axis& axes, bool keepdims) {
+    return ReduceAxis(x, axes, keepdims, 0.f, [](float a, float b) {
         return static_cast<bool>(a) || static_cast<bool>(b);
     });
 }
@@ -3606,6 +3587,38 @@ static Variables CvtToVars(const NdArrays& src) {
     return CvtVec<Variable>(src, [](const NdArray& v) { return Variable(v); });
 }
 
+// -----------------------------------------------------------------------------
+// -------------------------- Utilities for Function ---------------------------
+// -----------------------------------------------------------------------------
+static NdArray SumTo(const NdArray& x, const Shape& shape) {
+    const Shape& x_shape = x.shape();
+    // No need
+    if (x_shape == shape) {
+        return x;
+    }
+    // Impossible
+    if (x_shape.size() < shape.size()) {
+        return x;
+    }
+
+    // Create reduction axis
+    Axis axis;
+    const size_t lead = x_shape.size() - shape.size();
+    for (size_t i = 0; i < lead; i++) {  // lead_axis
+        axis.push_back(i);
+    }
+    for (size_t i = 0; i < shape.size(); i++) {  // axis
+        if (shape[i] == 1) {
+            axis.push_back(i + lead);
+        }
+    }
+
+    // Reduce
+    NdArray ret = x.sum(axis);
+
+    return ret;
+}
+
 // =============================================================================
 // ============================ Variable Definition ============================
 // =============================================================================
@@ -3633,7 +3646,7 @@ public:
     Substance() {}
     Substance(const NdArray& v_) : v(v_) {}
     NdArray v;
-    NdArray grad = {0.f};
+    NdArray grad;
     Function creator;
 };
 
@@ -3708,11 +3721,16 @@ Function Variable::getCreator() const {
 }
 
 void Variable::clearGrads() {
-    m_sub->grad = NdArray({0.f});
+    m_sub->grad = NdArray();
 }
 
 void Variable::addGrad(const NdArray& grad) {
-    m_sub->grad = m_sub->grad + grad;
+    // Initialize its shape
+    if (m_sub->grad.empty()) {
+        m_sub->grad = NdArray::Zeros(m_sub->v.shape());  // TODO: Omit filling
+    }
+    // Add
+    m_sub->grad += grad;
 }
 
 // --------------------------------- Operators ---------------------------------
@@ -3837,7 +3855,7 @@ public:
     virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
                               const NdArrays& gy) {
         CheckVecSize(x, 2, y, 1, gy, 1);
-        return {gy[0], gy[0]};
+        return {SumTo(gy[0], x[0].shape()), SumTo(gy[0], x[1].shape())};
     }
 };
 
@@ -3851,7 +3869,8 @@ public:
     virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
                               const NdArrays& gy) {
         CheckVecSize(x, 2, y, 1, gy, 1);
-        return {gy[0] * x[1], gy[0] * x[0]};
+        return {SumTo(gy[0] * x[1], x[0].shape()),
+                SumTo(gy[0] * x[0], x[1].shape())};
     }
 };
 

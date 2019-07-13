@@ -181,6 +181,38 @@ static Variables CvtToVars(const NdArrays& src) {
     return CvtVec<Variable>(src, [](const NdArray& v) { return Variable(v); });
 }
 
+// -----------------------------------------------------------------------------
+// -------------------------- Utilities for Function ---------------------------
+// -----------------------------------------------------------------------------
+static NdArray SumTo(const NdArray& x, const Shape& shape) {
+    const Shape& x_shape = x.shape();
+    // No need
+    if (x_shape == shape) {
+        return x;
+    }
+    // Impossible
+    if (x_shape.size() < shape.size()) {
+        return x;
+    }
+
+    // Create reduction axis
+    Axis axis;
+    const size_t lead = x_shape.size() - shape.size();
+    for (size_t i = 0; i < lead; i++) {  // lead_axis
+        axis.push_back(i);
+    }
+    for (size_t i = 0; i < shape.size(); i++) {  // axis
+        if (shape[i] == 1) {
+            axis.push_back(i + lead);
+        }
+    }
+
+    // Reduce
+    NdArray ret = x.sum(axis);
+
+    return ret;
+}
+
 // =============================================================================
 // ============================ Variable Definition ============================
 // =============================================================================
@@ -208,7 +240,7 @@ public:
     Substance() {}
     Substance(const NdArray& v_) : v(v_) {}
     NdArray v;
-    NdArray grad = {0.f};
+    NdArray grad;
     Function creator;
 };
 
@@ -283,11 +315,16 @@ Function Variable::getCreator() const {
 }
 
 void Variable::clearGrads() {
-    m_sub->grad = NdArray({0.f});
+    m_sub->grad = NdArray();
 }
 
 void Variable::addGrad(const NdArray& grad) {
-    m_sub->grad = m_sub->grad + grad;
+    // Initialize its shape
+    if (m_sub->grad.empty()) {
+        m_sub->grad = NdArray::Zeros(m_sub->v.shape());  // TODO: Omit filling
+    }
+    // Add
+    m_sub->grad += grad;
 }
 
 // --------------------------------- Operators ---------------------------------
@@ -412,7 +449,7 @@ public:
     virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
                               const NdArrays& gy) {
         CheckVecSize(x, 2, y, 1, gy, 1);
-        return {gy[0], gy[0]};
+        return {SumTo(gy[0], x[0].shape()), SumTo(gy[0], x[1].shape())};
     }
 };
 
@@ -426,7 +463,8 @@ public:
     virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
                               const NdArrays& gy) {
         CheckVecSize(x, 2, y, 1, gy, 1);
-        return {gy[0] * x[1], gy[0] * x[0]};
+        return {SumTo(gy[0] * x[1], x[0].shape()),
+                SumTo(gy[0] * x[0], x[1].shape())};
     }
 };
 

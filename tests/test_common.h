@@ -6,8 +6,15 @@ using namespace tinydiff;
 
 TEST_CASE("AutoGrad") {
     SECTION("Basic") {
-        Variable a(NdArray{{{1.f, 10.f}, {2.f, 3.f}}});
+        Variable a(NdArray{{1.f, 10.f}, {2.f, 3.f}});
         Variable b({2.f, 20.f});
+
+//         Variable c = a * b;
+//         c.backward();
+//         std::cout << "* result" << std::endl;
+//         std::cout << a.grad() << std::endl;
+//         std::cout << b.grad() << std::endl;
+//         std::cout << c.grad() << std::endl;
 
         Variable c, d, e;
         {
