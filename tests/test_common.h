@@ -18,7 +18,7 @@ TEST_CASE("AutoGrad") {
 
         Variable c, d, e, f;
         {
-            Variable a2 = F::exp(a);
+            Variable a2 = F::Exp(a);
             c = a2 + b;
             d = c * b;
             e = d / a;

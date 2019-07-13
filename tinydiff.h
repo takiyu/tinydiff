@@ -580,11 +580,11 @@ protected:
 
 namespace F {
 
-Variable add(Variable lhs, Variable rhs);
-Variable sub(Variable lhs, Variable rhs);
-Variable mul(Variable lhs, Variable rhs);
-Variable div(Variable lhs, Variable rhs);
-Variable exp(Variable x);
+Variable Add(Variable lhs, Variable rhs);
+Variable Sub(Variable lhs, Variable rhs);
+Variable Mul(Variable lhs, Variable rhs);
+Variable Div(Variable lhs, Variable rhs);
+Variable Exp(Variable x);
 
 }  // namespace F
 
@@ -3743,19 +3743,19 @@ std::ostream& operator<<(std::ostream& os, Variable& x) {
 }
 
 Variable operator+(const Variable& lhs, const Variable& rhs) {
-    return F::add(lhs, rhs);
+    return F::Add(lhs, rhs);
 }
 
 Variable operator-(const Variable& lhs, const Variable& rhs) {
-    return F::sub(lhs, rhs);
+    return F::Sub(lhs, rhs);
 }
 
 Variable operator*(const Variable& lhs, const Variable& rhs) {
-    return F::mul(lhs, rhs);
+    return F::Mul(lhs, rhs);
 }
 
 Variable operator/(const Variable& lhs, const Variable& rhs) {
-    return F::div(lhs, rhs);
+    return F::Div(lhs, rhs);
 }
 
 // =============================================================================
@@ -3857,9 +3857,9 @@ size_t Function::getRank() const {
 
 namespace F {
 
-class AddSubstance : public Function::Substance {
+class AddSub : public Function::Substance {
 public:
-    virtual ~AddSubstance() {}
+    virtual ~AddSub() {}
     virtual NdArrays forward(const NdArrays& x) {
         CheckVecSize(x, 2);
         return {x[0] + x[1]};
@@ -3871,9 +3871,9 @@ public:
     }
 };
 
-class SubSubstance : public Function::Substance {
+class SubSub : public Function::Substance {
 public:
-    virtual ~SubSubstance() {}
+    virtual ~SubSub() {}
     virtual NdArrays forward(const NdArrays& x) {
         CheckVecSize(x, 2);
         return {x[0] - x[1]};
@@ -3885,9 +3885,9 @@ public:
     }
 };
 
-class MulSubstance : public Function::Substance {
+class MulSub : public Function::Substance {
 public:
-    virtual ~MulSubstance() {}
+    virtual ~MulSub() {}
     virtual NdArrays forward(const NdArrays& x) {
         CheckVecSize(x, 2);
         return {x[0] * x[1]};
@@ -3900,9 +3900,9 @@ public:
     }
 };
 
-class DivSubstance : public Function::Substance {
+class DivSub : public Function::Substance {
 public:
-    virtual ~DivSubstance() {}
+    virtual ~DivSub() {}
     virtual NdArrays forward(const NdArrays& x) {
         CheckVecSize(x, 2);
         return {x[0] / x[1]};
@@ -3916,9 +3916,9 @@ public:
     }
 };
 
-class ExpSubstance : public Function::Substance {
+class ExpSub : public Function::Substance {
 public:
-    virtual ~ExpSubstance() {}
+    virtual ~ExpSub() {}
     virtual NdArrays forward(const NdArrays& x) {
         CheckVecSize(x, 1);
         return {Exp(x[0])};
@@ -3933,38 +3933,31 @@ public:
 // ------------------------------- Helper Class --------------------------------
 // Helper to replace default substance with implemented one
 template <typename S>
-class FunctionImplHelper : public Function {
+class FuncImplHelper : public Function {
 public:
-    FunctionImplHelper() : Function(std::make_shared<S>()) {}
-    virtual ~FunctionImplHelper() {}
+    FuncImplHelper() : Function(std::make_shared<S>()) {}
+    virtual ~FuncImplHelper() {}
 };
 
-// ------------------------- Alias for Function Classes ------------------------
-using Add = FunctionImplHelper<AddSubstance>;
-using Sub = FunctionImplHelper<SubSubstance>;
-using Mul = FunctionImplHelper<MulSubstance>;
-using Div = FunctionImplHelper<DivSubstance>;
-using Exp = FunctionImplHelper<ExpSubstance>;
-
 // ----------------------------- Function Wrapping -----------------------------
-Variable add(Variable lhs, Variable rhs) {
-    return Add()({lhs, rhs})[0];
+Variable Add(Variable lhs, Variable rhs) {
+    return FuncImplHelper<AddSub>()({lhs, rhs})[0];
 }
 
-Variable sub(Variable lhs, Variable rhs) {
-    return Sub()({lhs, rhs})[0];
+Variable Sub(Variable lhs, Variable rhs) {
+    return FuncImplHelper<SubSub>()({lhs, rhs})[0];
 }
 
-Variable mul(Variable lhs, Variable rhs) {
-    return Mul()({lhs, rhs})[0];
+Variable Mul(Variable lhs, Variable rhs) {
+    return FuncImplHelper<MulSub>()({lhs, rhs})[0];
 }
 
-Variable div(Variable lhs, Variable rhs) {
-    return Div()({lhs, rhs})[0];
+Variable Div(Variable lhs, Variable rhs) {
+    return FuncImplHelper<DivSub>()({lhs, rhs})[0];
 }
 
-Variable exp(Variable x) {
-    return Exp()({x})[0];
+Variable Exp(Variable x) {
+    return FuncImplHelper<ExpSub>()({x})[0];
 }
 
 }  // namespace F
