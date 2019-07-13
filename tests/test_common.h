@@ -16,21 +16,23 @@ TEST_CASE("AutoGrad") {
 //         std::cout << b.grad() << std::endl;
 //         std::cout << c.grad() << std::endl;
 
-        Variable c, d, e;
+        Variable c, d, e, f;
         {
             Variable a2 = F::exp(a);
             c = a2 + b;
             d = c * b;
-            e = d * a;
+            e = d / a;
+            f = e - b;
         }
 
-        e.backward();
+        f.backward();
 
         std::cout << a.grad() << std::endl;
         std::cout << b.grad() << std::endl;
         std::cout << c.grad() << std::endl;
         std::cout << d.grad() << std::endl;
         std::cout << e.grad() << std::endl;
+        std::cout << f.grad() << std::endl;
 
         //         REQUIRE(a.data() == Approx(10.f));
         //         REQUIRE(b.data() == Approx(20.f));
