@@ -25,7 +25,6 @@ namespace tinydiff {
 // #############################################################################
 #ifndef TINYDIFF_NO_DECLARATION
 
-
 class NdArray;
 using InitShape = std::initializer_list<int>;
 using Shape = std::vector<int>;
@@ -498,7 +497,6 @@ NdArray Where(NdArray&& cond, float x, float y);
 // Inverse
 NdArray Inv(NdArray&& x);
 
-
 using NdArrays = std::vector<NdArray>;
 class Variable;
 using Variables = std::vector<Variable>;
@@ -595,7 +593,6 @@ Variable exp(Variable x);
 // ############################ Begin of Definitions ###########################
 // #############################################################################
 #ifdef TINYDIFF_IMPLEMENTATION
-
 
 // -----------------------------------------------------------------------------
 // --------------------------- Utilities for NdArray ---------------------------
@@ -3559,7 +3556,6 @@ NdArray Where(NdArray&& cond, float x, float y) {
 NdArray Inv(NdArray&& x) {
     return InvertNdArrayInplace(std::move(x));
 }
-
 
 // -----------------------------------------------------------------------------
 // -------------------------- Utilities for Variable ---------------------------

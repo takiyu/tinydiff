@@ -33,16 +33,18 @@ if __name__ == '__main__':
     with open('./tinydiff.h', 'r') as diff_f:
         diff_code = diff_f.read()
         diff_code = replace_code(diff_code,
+                                 '\n' +
                                  '// Declaration of NdArray\n' +
                                  '#define TINYNDARRAY_NO_NAMESPACE\n' +
-                                 '#include "./tinyndarray/tinyndarray.h"',
+                                 '#include "./tinyndarray/tinyndarray.h"\n',
                                  decl_code)
         diff_code = replace_code(diff_code,
+                                 '\n' +
                                  '// Definitions of NdArray\n' +
                                  '#define TINYNDARRAY_NO_NAMESPACE\n' +
                                  '#define TINYNDARRAY_NO_DECLARATION\n' +
                                  '#define TINYNDARRAY_IMPLEMENTATION\n' +
-                                 '#include "./tinyndarray/tinyndarray.h"',
+                                 '#include "./tinyndarray/tinyndarray.h"\n',
                                  defi_code)
 
     # Save combined TinyDiff
