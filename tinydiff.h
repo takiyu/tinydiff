@@ -552,8 +552,7 @@ public:
 
     NdArray data() const;
     NdArray grad() const;
-    void backward(bool clear_grads = true,
-                  bool retain_grads = false);
+    void backward(bool clear_grads = true, bool retain_grads = false);
 
     void setCreator(Function f);
     Function getCreator() const;
@@ -3682,7 +3681,7 @@ static Variables CvtToVars(const NdArrays& src) {
 
 template <typename T>
 static void ClearGrads(T vars) {
-    for (auto&& v: vars) {
+    for (auto&& v : vars) {
         v.clearGrad();
     }
 }
@@ -3847,7 +3846,7 @@ void Variable::backward(bool clear_grads, bool retain_grads) {
         // Clear last outputs
         ClearGrads(last_creator.getOutputs());
         // For all inputs
-        for (auto&& func: funcs) {
+        for (auto&& func : funcs) {
             ClearGrads(func.getInputs());
         }
     }
@@ -3858,12 +3857,12 @@ void Variable::backward(bool clear_grads, bool retain_grads) {
     }
 
     // Run backward functions
-    for (auto&& func: funcs) {
+    for (auto&& func : funcs) {
         // Call backward
         Variables inputs = func.getInputs();
         Variables outputs = func.getOutputs();
-        NdArrays in_grads = func.backward(
-                GetData(inputs), GetData(outputs), GetGrads(outputs));
+        NdArrays in_grads = func.backward(GetData(inputs), GetData(outputs),
+                                          GetGrads(outputs));
         assert(inputs.size() == in_grads.size());
 
         // Accumulate gradients

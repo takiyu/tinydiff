@@ -205,4 +205,85 @@ TEST_CASE("AutoGrad") {
                   "[[[[[-0.222222, -0.125]],\n"
                   "   [[-0.08, -0.0555556]]]]]");
     }
+
+    // --------------------------- Backward options ----------------------------
+    SECTION("Backward (retain_grads)") {
+        Variable v1 = {1.f, 2.f};
+        Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
+
+        // retain_grads: true
+        auto v3_a = v1 + v2;
+        auto v4_a = v3_a * v2;
+        auto v5_a = v3_a / v4_a;
+        v5_a.backward(true, true);
+        CheckGrad(v1, "[0, 0]");
+        CheckGrad(v2,
+                  "[[-0.111111, -0.0625],\n"
+                  " [-0.04, -0.0277778]]");
+        CheckGrad(v3_a,
+                  "[[0, 0],\n"
+                  " [0, 0]]");
+        CheckGrad(v4_a,
+                  "[[-0.0277778, -0.0104167],\n"
+                  " [-0.00666667, -0.00347222]]");
+        CheckGrad(v5_a,
+                  "[[1, 1],\n"
+                  " [1, 1]]");
+
+        // retain_grads: false
+        auto v3_b = v1 + v2;
+        auto v4_b = v3_b * v2;
+        auto v5_b = v3_b / v4_b;
+        v5_b.backward(true, false);
+        CheckGrad(v1, "[0, 0]");
+        CheckGrad(v2,
+                  "[[-0.111111, -0.0625],\n"
+                  " [-0.04, -0.0277778]]");
+        CheckGrad(v3_b, "[]");
+        CheckGrad(v4_b, "[]");
+        CheckGrad(v5_b, "[]");
+    }
+
+    SECTION("Backward (no clear_grads)") {
+        Variable v1 = {1.f, 2.f};
+        Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
+
+        // retain_grads: true
+        auto v3_a = v1 + v2;
+        auto v4_a = v3_a * v2;
+        auto v5_a = v3_a / v4_a;
+        v5_a.backward(false, true);
+        CheckGrad(v1, "[0, 0]");
+        CheckGrad(v2,
+                  "[[-0.111111, -0.0625],\n"
+                  " [-0.04, -0.0277778]]");
+        CheckGrad(v3_a,
+                  "[[0, 0],\n"
+                  " [0, 0]]");
+        CheckGrad(v4_a,
+                  "[[-0.0277778, -0.0104167],\n"
+                  " [-0.00666667, -0.00347222]]");
+        CheckGrad(v5_a,
+                  "[[1, 1],\n"
+                  " [1, 1]]");
+
+        // retain_grads: true (second)
+        auto v3_b = v1 + v2;
+        auto v4_b = v3_b * v2;
+        auto v5_b = v3_b / v4_b;
+        v5_b.backward(false, true);
+        CheckGrad(v1, "[0, 0]");
+        CheckGrad(v2,
+                  "[[-0.222222, -0.125],\n"
+                  " [-0.08, -0.0555556]]");
+        CheckGrad(v3_b,
+                  "[[0, 0],\n"
+                  " [0, 0]]");
+        CheckGrad(v4_b,
+                  "[[-0.0277778, -0.0104167],\n"
+                  " [-0.00666667, -0.00347222]]");
+        CheckGrad(v5_b,
+                  "[[1, 1],\n"
+                  " [1, 1]]");
+    }
 }
