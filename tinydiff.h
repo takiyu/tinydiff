@@ -18,13 +18,23 @@
 #include <vector>
 #endif
 
+#ifndef TINYDIFF_NO_NAMESPACE
 namespace tinydiff {
+#endif  // TINYDIFF_NO_NAMESPACE
 
 // #############################################################################
 // ############################ Begin of Declaration ###########################
 // #############################################################################
 #ifndef TINYDIFF_NO_DECLARATION
 
+// Forward Declaration of TinyDiff
+class NdArray;
+using NdArrays = std::vector<NdArray>;
+class Variable;
+using Variables = std::vector<Variable>;
+class Function;
+
+// Forward Declaration of TinyNdArray
 class NdArray;
 using InitShape = std::initializer_list<int>;
 using Shape = std::vector<int>;
@@ -405,6 +415,9 @@ NdArray Where(const NdArray& cond, const NdArray& x, const NdArray& y);
 NdArray Where(const NdArray& cond, const NdArray& x, float y);
 NdArray Where(const NdArray& cond, float x, const NdArray& y);
 NdArray Where(const NdArray& cond, float x, float y);
+// Shape functions
+NdArray Reshape(const NdArray& x, const Shape& shape);
+NdArray Squeeze(const NdArray& x);
 // Inverse
 NdArray Inv(const NdArray& x);
 // ------------------------ In-place Operator Functions ------------------------
@@ -497,11 +510,6 @@ NdArray Where(NdArray&& cond, float x, float y);
 // Inverse
 NdArray Inv(NdArray&& x);
 
-using NdArrays = std::vector<NdArray>;
-class Variable;
-using Variables = std::vector<Variable>;
-class Function;
-
 // =============================================================================
 // ================================== Variable =================================
 // =============================================================================
@@ -517,13 +525,24 @@ public:
     Variable(float v);
     Variable(const NdArray& v);
 
+    Variable(FloatList<0> init_list);
+    Variable(FloatList<1> init_list);
+    Variable(FloatList<2> init_list);
+    Variable(FloatList<3> init_list);
+    Variable(FloatList<4> init_list);
+    Variable(FloatList<5> init_list);
+    Variable(FloatList<6> init_list);
+    Variable(FloatList<7> init_list);
+    Variable(FloatList<8> init_list);
+    Variable(FloatList<9> init_list);
+
     NdArray data() const;
     NdArray grad() const;
     void backward();
 
     void setCreator(Function f);
     Function getCreator() const;
-    void clearGrads();
+    void clearGrad();
     void addGrad(const NdArray& grad);
 
     class Substance;
@@ -534,7 +553,7 @@ private:
 };
 
 // --------------------------------- Operators ---------------------------------
-std::ostream& operator<<(std::ostream& os, Variable& x);
+std::ostream& operator<<(std::ostream& os, const Variable& x);
 Variable operator+(const Variable& lhs, const Variable& rhs);
 Variable operator-(const Variable& lhs, const Variable& rhs);
 Variable operator*(const Variable& lhs, const Variable& rhs);
@@ -552,7 +571,7 @@ public:
     Function& operator=(Function&&);
     virtual ~Function();
 
-    // Clear all member variables
+    // Clear all member variables (including input and output variables)
     void clear();
 
     // Build computational graph with forwarding
@@ -1385,8 +1404,8 @@ NdArray ReduceAxis(const NdArray& src, const Axis& axes, bool keepdims,
         NdArray ret;
         for (size_t i = 0; i < axes.size(); i++) {
             // From back
-            const size_t axis = static_cast<size_t>(
-                    sorted_axes[axes.size() - i - 1]);
+            const size_t axis =
+                    static_cast<size_t>(sorted_axes[axes.size() - i - 1]);
             // Reduce
             if (i == 0) {
                 ret = ReduceAxisOne(src, axis, init_v, reduce_op);
@@ -1980,6 +1999,10 @@ NdArray::NdArray(FloatList<6> init_list) : NdArray(CheckFListShape(init_list)) {
 }
 
 NdArray::NdArray(FloatList<7> init_list) : NdArray(CheckFListShape(init_list)) {
+    CopyFListElems(init_list, m_sub->v.get());
+}
+
+NdArray::NdArray(FloatList<8> init_list) : NdArray(CheckFListShape(init_list)) {
     CopyFListElems(init_list, m_sub->v.get());
 }
 
@@ -3186,6 +3209,21 @@ NdArray Where(const NdArray& cond, float x, float y) {
     return ApplyWhereOp(cond, x, y);
 }
 
+// Shape functions
+NdArray Reshape(const NdArray& x, const Shape& shape) {
+    return x.reshape(shape);
+}
+
+NdArray Squeeze(const NdArray& x) {
+    Shape ret_shape;
+    for (auto&& s : x.shape()) {
+        if (s != 1) {
+            ret_shape.push_back(s);
+        }
+    }
+    return x.reshape(ret_shape);
+}
+
 // Inverse
 NdArray Inv(const NdArray& x) {
     return InvertNdArray(x);
@@ -3620,6 +3658,9 @@ static NdArray SumTo(const NdArray& x, const Shape& shape) {
     // Reduce
     NdArray ret = x.sum(axis);
 
+    // Squeeze
+    ret = Squeeze(ret);
+
     return ret;
 }
 
@@ -3658,6 +3699,26 @@ public:
 Variable::Variable(float v) : m_sub(std::make_shared<Substance>(NdArray{v})) {}
 
 Variable::Variable(const NdArray& v) : m_sub(std::make_shared<Substance>(v)) {}
+
+Variable::Variable(FloatList<0> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<1> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<2> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<3> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<4> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<5> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<6> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<7> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<8> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<9> init_list) : Variable(NdArray(init_list)) {}
 
 // ---------------------------------- Methods ----------------------------------
 NdArray Variable::data() const {
@@ -3710,7 +3771,7 @@ void Variable::backward() {
         last_func.clear();
         // Remove used gradient
         for (auto&& output : outputs) {
-            output.clearGrads();
+            output.clearGrad();
         }
     }
 }
@@ -3724,7 +3785,7 @@ Function Variable::getCreator() const {
     return m_sub->creator;
 }
 
-void Variable::clearGrads() {
+void Variable::clearGrad() {
     m_sub->grad = NdArray();
 }
 
@@ -3738,7 +3799,7 @@ void Variable::addGrad(const NdArray& grad) {
 }
 
 // --------------------------------- Operators ---------------------------------
-std::ostream& operator<<(std::ostream& os, Variable& x) {
+std::ostream& operator<<(std::ostream& os, const Variable& x) {
     return os << x.data();
 }
 
@@ -3967,6 +4028,8 @@ Variable Exp(Variable x) {
 // ############################# End of Definition ############################
 // #############################################################################
 
+#ifndef TINYDIFF_NO_NAMESPACE
 }  // namespace tinydiff
+#endif  // TINYDIFF_NO_NAMESPACE
 
 #endif /* end of include guard */

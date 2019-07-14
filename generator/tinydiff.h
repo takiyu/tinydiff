@@ -18,21 +18,25 @@
 #include <vector>
 #endif
 
+#ifndef TINYDIFF_NO_NAMESPACE
 namespace tinydiff {
+#endif  // TINYDIFF_NO_NAMESPACE
 
 // #############################################################################
 // ############################ Begin of Declaration ###########################
 // #############################################################################
 #ifndef TINYDIFF_NO_DECLARATION
 
-// Declaration of NdArray
-#define TINYNDARRAY_NO_NAMESPACE
-#include "./tinyndarray/tinyndarray.h"
-
+// Forward Declaration of TinyDiff
+class NdArray;
 using NdArrays = std::vector<NdArray>;
 class Variable;
 using Variables = std::vector<Variable>;
 class Function;
+
+// Declaration of NdArray
+#define TINYNDARRAY_NO_NAMESPACE
+#include "./tinyndarray/tinyndarray.h"
 
 // =============================================================================
 // ================================== Variable =================================
@@ -49,13 +53,24 @@ public:
     Variable(float v);
     Variable(const NdArray& v);
 
+    Variable(FloatList<0> init_list);
+    Variable(FloatList<1> init_list);
+    Variable(FloatList<2> init_list);
+    Variable(FloatList<3> init_list);
+    Variable(FloatList<4> init_list);
+    Variable(FloatList<5> init_list);
+    Variable(FloatList<6> init_list);
+    Variable(FloatList<7> init_list);
+    Variable(FloatList<8> init_list);
+    Variable(FloatList<9> init_list);
+
     NdArray data() const;
     NdArray grad() const;
     void backward();
 
     void setCreator(Function f);
     Function getCreator() const;
-    void clearGrads();
+    void clearGrad();
     void addGrad(const NdArray& grad);
 
     class Substance;
@@ -66,7 +81,7 @@ private:
 };
 
 // --------------------------------- Operators ---------------------------------
-std::ostream& operator<<(std::ostream& os, Variable& x);
+std::ostream& operator<<(std::ostream& os, const Variable& x);
 Variable operator+(const Variable& lhs, const Variable& rhs);
 Variable operator-(const Variable& lhs, const Variable& rhs);
 Variable operator*(const Variable& lhs, const Variable& rhs);
@@ -84,7 +99,7 @@ public:
     Function& operator=(Function&&);
     virtual ~Function();
 
-    // Clear all member variables
+    // Clear all member variables (including input and output variables)
     void clear();
 
     // Build computational graph with forwarding
@@ -214,6 +229,9 @@ static NdArray SumTo(const NdArray& x, const Shape& shape) {
     // Reduce
     NdArray ret = x.sum(axis);
 
+    // Squeeze
+    ret = Squeeze(ret);
+
     return ret;
 }
 
@@ -252,6 +270,26 @@ public:
 Variable::Variable(float v) : m_sub(std::make_shared<Substance>(NdArray{v})) {}
 
 Variable::Variable(const NdArray& v) : m_sub(std::make_shared<Substance>(v)) {}
+
+Variable::Variable(FloatList<0> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<1> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<2> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<3> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<4> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<5> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<6> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<7> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<8> init_list) : Variable(NdArray(init_list)) {}
+
+Variable::Variable(FloatList<9> init_list) : Variable(NdArray(init_list)) {}
 
 // ---------------------------------- Methods ----------------------------------
 NdArray Variable::data() const {
@@ -304,7 +342,7 @@ void Variable::backward() {
         last_func.clear();
         // Remove used gradient
         for (auto&& output : outputs) {
-            output.clearGrads();
+            output.clearGrad();
         }
     }
 }
@@ -318,7 +356,7 @@ Function Variable::getCreator() const {
     return m_sub->creator;
 }
 
-void Variable::clearGrads() {
+void Variable::clearGrad() {
     m_sub->grad = NdArray();
 }
 
@@ -332,7 +370,7 @@ void Variable::addGrad(const NdArray& grad) {
 }
 
 // --------------------------------- Operators ---------------------------------
-std::ostream& operator<<(std::ostream& os, Variable& x) {
+std::ostream& operator<<(std::ostream& os, const Variable& x) {
     return os << x.data();
 }
 
@@ -561,6 +599,8 @@ Variable Exp(Variable x) {
 // ############################# End of Definition ############################
 // #############################################################################
 
+#ifndef TINYDIFF_NO_NAMESPACE
 }  // namespace tinydiff
+#endif  // TINYDIFF_NO_NAMESPACE
 
 #endif /* end of include guard */

@@ -2,12 +2,74 @@
 
 #include "../tinydiff.h"
 
+#include <iomanip>
+
 using namespace tinydiff;
 
+static void CheckNdArray(const Variable& v, const std::string& str,
+                         int precision = -1) {
+    std::stringstream ss;
+    if (0 < precision) {
+        ss << std::setprecision(4);
+    }
+    ss << v;
+    CHECK(ss.str() == str);
+}
+
+static void CheckData(const Variable& v, const std::string& str,
+                      int precision = -1) {
+    CheckNdArray(v.data(), str, precision);
+}
+
+static void CheckGrad(const Variable& v, const std::string& str,
+                      int precision = -1) {
+    CheckNdArray(v.grad(), str, precision);
+}
+
 TEST_CASE("AutoGrad") {
+    // -------------------------- Basic construction ---------------------------
     SECTION("Basic") {
-        Variable a(NdArray{{1.f, 10.f}, {2.f, 3.f}});
-        Variable b({2.f, 20.f});
+        const Variable v0;
+        const Variable v1 = {1.f, 2.f};
+        const Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
+        const Variable v3(NdArray::Zeros(2, 4));
+        CHECK(v0.data().empty());
+        CheckData(v1, "[1, 2]");
+        CheckData(v2,
+                  "[[3, 4],\n"
+                  " [5, 6]]");
+        CheckData(v3,
+                  "[[0, 0, 0, 0],\n"
+                  " [0, 0, 0, 0]]");
+    }
+
+    // ------------------------- Arithmetic functions --------------------------
+    SECTION("Arithmetic") {
+        Variable v1 = {1.f, 2.f};
+        Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
+
+        auto v12 = v1 * v2;
+        v12.backward();
+        CheckGrad(v1, "[8, 10]");
+        CheckGrad(v2,
+                  "[[1, 2],\n"
+                  " [1, 2]]");
+
+        v1.clearGrad();
+        v2.clearGrad();
+
+        auto v21 = v2 * v1;
+        v21.backward();
+        CheckGrad(v1, "[8, 10]");
+        CheckGrad(v2,
+                  "[[1, 2],\n"
+                  " [1, 2]]");
+
+        CheckData(v1, "[1, 2]");
+        CheckData(v2,
+                  "[[3, 4],\n"
+                  " [5, 6]]");
+    }
 
 //         Variable c = a * b;
 //         c.backward();
@@ -16,34 +78,22 @@ TEST_CASE("AutoGrad") {
 //         std::cout << b.grad() << std::endl;
 //         std::cout << c.grad() << std::endl;
 
-        Variable c, d, e, f;
-        {
-            Variable a2 = F::Exp(a);
-            c = a2 + b;
-            d = c * b;
-            e = d / a;
-            f = e - b;
-        }
-
-        f.backward();
-
-        std::cout << a.grad() << std::endl;
-        std::cout << b.grad() << std::endl;
-        std::cout << c.grad() << std::endl;
-        std::cout << d.grad() << std::endl;
-        std::cout << e.grad() << std::endl;
-        std::cout << f.grad() << std::endl;
-
-        //         REQUIRE(a.data() == Approx(10.f));
-        //         REQUIRE(b.data() == Approx(20.f));
-        //         REQUIRE(c.data() == Approx(22046.5f));
-        //         REQUIRE(d.data() == Approx(440929.f));
-        //         REQUIRE(e.data() == Approx(4.40929e+06f));
-        //
-        //         REQUIRE(a.grad() == Approx(4.84622e+06f));
-        //         REQUIRE(b.grad() == Approx(220665.f));
-        //         REQUIRE(c.grad() == Approx(200.f));
-        //         REQUIRE(d.grad() == Approx(10.f));
-        //         REQUIRE(e.grad() == Approx(1.f));
-    }
+//         Variable c, d, e, f;
+//         {
+//             Variable a2 = F::Exp(v1);
+//             c = a2 + v2;
+//             d = c * v2;
+//             e = d / v1;
+//             f = e - v2;
+//         }
+//
+//         f.backward();
+//
+//         std::cout << v1.grad() << std::endl;
+//         std::cout << v2.grad() << std::endl;
+//         std::cout << v2.data() << std::endl;
+//         std::cout << c.grad() << std::endl;
+//         std::cout << d.grad() << std::endl;
+//         std::cout << e.grad() << std::endl;
+//         std::cout << f.grad() << std::endl;
 }

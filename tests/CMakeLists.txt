@@ -92,6 +92,7 @@ set(tinydiff_header ${CMAKE_CURRENT_SOURCE_DIR}/../tinydiff.h)
 # Executable file for tests (one c++ file)
 add_executable(tinydiff_tests
     ${tinydiff_header}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_total.cpp
 )
 setup_target(tinydiff_tests "" "${CMAKE_THREAD_LIBS_INIT}")
@@ -99,6 +100,7 @@ setup_target(tinydiff_tests "" "${CMAKE_THREAD_LIBS_INIT}")
 # Executable file for tests (separated c++ files)
 add_executable(tinydiff_tests_separated
     ${tinydiff_header}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_separated_1.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_separated_2.cpp
 )
