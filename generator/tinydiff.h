@@ -66,7 +66,9 @@ public:
 
     NdArray data() const;
     NdArray grad() const;
-    void backward();
+
+    void backward(bool clear_grads = true,
+                  bool retain_grads = false);
 
     void setCreator(Function f);
     Function getCreator() const;
@@ -200,9 +202,47 @@ static Variables CvtToVars(const NdArrays& src) {
     return CvtVec<Variable>(src, [](const NdArray& v) { return Variable(v); });
 }
 
+template <typename T>
+static void ClearGrads(T vars) {
+    for (auto&& v: vars) {
+        v.clearGrad();
+    }
+}
+
 // -----------------------------------------------------------------------------
 // -------------------------- Utilities for Function ---------------------------
 // -----------------------------------------------------------------------------
+std::vector<Function> ResolveChain(const Function& start_func) {
+    std::vector<Function> ret_funcs;
+
+    // Pool
+    std::map<size_t, Function> m_cand_funcs;
+    // Set the last function
+    m_cand_funcs[start_func.getRank()] = start_func;
+
+    // Resolving loop
+    while (!m_cand_funcs.empty()) {
+        // Get highest rank function
+        Function last_func = PopLast(m_cand_funcs);
+        ret_funcs.push_back(last_func);
+
+        // Track chain
+        Variables inputs = last_func.getInputs();
+        for (size_t i = 0; i < inputs.size(); i++) {
+            auto&& func = inputs[i].getCreator();
+            // When rank is zero, it is already resolved.
+            if (0 < func.getRank()) {
+                m_cand_funcs[func.getRank()] = func;
+            }
+        }
+
+        // Clear rank
+        last_func.setRank(0);
+    }
+
+    return ret_funcs;
+}
+
 static NdArray SumTo(const NdArray& x, const Shape& shape) {
     const Shape& x_shape = x.shape();
     // No need
@@ -228,9 +268,6 @@ static NdArray SumTo(const NdArray& x, const Shape& shape) {
 
     // Reduce
     NdArray ret = x.sum(axis);
-
-    // Squeeze
-    ret = Squeeze(ret);
 
     return ret;
 }
@@ -300,49 +337,46 @@ NdArray Variable::grad() const {
     return m_sub->grad;
 }
 
-void Variable::backward() {
+void Variable::backward(bool clear_grads, bool retain_grads) {
+    Function last_creator = m_sub->creator;
+
+    // Resolve chain
+    std::vector<Function> funcs = ResolveChain(last_creator);
+
+    // Remove previous gradients
+    if (clear_grads) {
+        // Clear last outputs
+        ClearGrads(last_creator.getOutputs());
+        // For all inputs
+        for (auto&& func: funcs) {
+            ClearGrads(func.getInputs());
+        }
+    }
+
     // Set the last gradients 'one'
-    for (auto&& output : m_sub->creator.getOutputs()) {
+    for (auto&& output : last_creator.getOutputs()) {
         output.addGrad({1.f});
     }
 
-    // Ordered storage to resolve
-    std::map<size_t, Function> cand_funcs;
-    // Register the last node
-    cand_funcs[m_sub->creator.getRank()] = m_sub->creator;
-    // Resolving loop
-    while (!cand_funcs.empty()) {
-        // Get highest rank function
-        Function last_func = PopLast(cand_funcs);
-        // Ignore no connected function (already resolved)
-        if (last_func.getRank() == 0) {
-            continue;
-        }
-
+    // Run backward functions
+    for (auto&& func: funcs) {
         // Call backward
-        Variables inputs = last_func.getInputs();
-        Variables outputs = last_func.getOutputs();
-        NdArrays in_grads = last_func.backward(
+        Variables inputs = func.getInputs();
+        Variables outputs = func.getOutputs();
+        NdArrays in_grads = func.backward(
                 GetData(inputs), GetData(outputs), GetGrads(outputs));
         assert(inputs.size() == in_grads.size());
+
         // Accumulate gradients
         for (size_t i = 0; i < inputs.size(); i++) {
             inputs[i].addGrad(in_grads[i]);
         }
 
-        // Track chain
-        for (size_t i = 0; i < inputs.size(); i++) {
-            auto&& func = inputs[i].getCreator();
-            if (0 < func.getRank()) {
-                cand_funcs[func.getRank()] = func;
-            }
-        }
-
-        // Remove chain (set rank 0)
-        last_func.clear();
+        // Remove all members (input, output and rank)
+        func.clear();
         // Remove used gradient
-        for (auto&& output : outputs) {
-            output.clearGrad();
+        if (!retain_grads) {
+            ClearGrads(outputs);
         }
     }
 }
@@ -365,8 +399,12 @@ void Variable::addGrad(const NdArray& grad) {
     if (m_sub->grad.empty()) {
         m_sub->grad = NdArray::Zeros(m_sub->v.shape());  // TODO: Omit filling
     }
-    // Add
-    m_sub->grad += grad;
+    // Accumulate gradient for broadcasting
+    //   Note: When broadcasting was successful in forwarding operation, the
+    //         broadcasted axes are not ones. Containing ones in the shapes
+    //         means that the axes do not affect neither broadcasting nor any
+    //         computation. Squeeze operation can omit the no affect dimensions.
+    Squeeze(m_sub->grad) += Squeeze(grad);
 }
 
 // --------------------------------- Operators ---------------------------------
@@ -513,7 +551,7 @@ public:
     virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
                               const NdArrays& gy) {
         CheckVecSize(x, 2, y, 1, gy, 1);
-        return {SumTo(gy[0], x[0].shape()), -SumTo(gy[0], x[1].shape())};
+        return {SumTo(gy[0], x[0].shape()), SumTo(-gy[0], x[1].shape())};
     }
 };
 
