@@ -544,9 +544,14 @@ public:
     Variable(FloatList<8> init_list);
     Variable(FloatList<9> init_list);
 
+    uintptr_t id() const;
+    bool empty() const;
+    size_t size() const;
+    const Shape& shape() const;
+    size_t ndim() const;
+
     NdArray data() const;
     NdArray grad() const;
-
     void backward(bool clear_grads = true,
                   bool retain_grads = false);
 
@@ -3801,7 +3806,28 @@ Variable::Variable(FloatList<8> init_list) : Variable(NdArray(init_list)) {}
 
 Variable::Variable(FloatList<9> init_list) : Variable(NdArray(init_list)) {}
 
-// ---------------------------------- Methods ----------------------------------
+// ------------------------------- Basic methods -------------------------------
+uintptr_t Variable::id() const {
+    return m_sub->v.id();
+}
+
+bool Variable::empty() const {
+    return m_sub->v.empty();
+}
+
+size_t Variable::size() const {
+    return m_sub->v.size();
+}
+
+const Shape& Variable::shape() const {
+    return m_sub->v.shape();
+}
+
+size_t Variable::ndim() const {
+    return m_sub->v.ndim();
+}
+
+// ------------------------ Unique methods for Variable ------------------------
 NdArray Variable::data() const {
     return m_sub->v;
 }
@@ -3854,6 +3880,7 @@ void Variable::backward(bool clear_grads, bool retain_grads) {
     }
 }
 
+// ------------------------------ Internal methods -----------------------------
 void Variable::setCreator(Function f) {
     m_sub->creator = f;
     f.setRank(f.getRank() + 1);  // Increase rank
@@ -3873,10 +3900,11 @@ void Variable::addGrad(const NdArray& grad) {
         m_sub->grad = NdArray::Zeros(m_sub->v.shape());  // TODO: Omit filling
     }
     // Accumulate gradient for broadcasting
-    //   Note: When broadcasting was successful in forwarding operation, the
+    //   Note: When broadcasting succeeded in forwarding operation, the
     //         broadcasted axes are not ones. Containing ones in the shapes
     //         means that the axes do not affect neither broadcasting nor any
-    //         computation. Squeeze operation can omit the no affect dimensions.
+    //         computation. Squeeze operation can omit the non-affective
+    //         dimensions.
     Squeeze(m_sub->grad) += Squeeze(grad);
 }
 

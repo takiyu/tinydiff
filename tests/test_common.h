@@ -28,7 +28,7 @@ static void CheckGrad(const Variable& v, const std::string& str,
 
 TEST_CASE("AutoGrad") {
     // -------------------------- Basic construction ---------------------------
-    SECTION("Basic") {
+    SECTION("Basic construction") {
         const Variable v0;
         const Variable v1 = {1.f, 2.f};
         const Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
@@ -41,6 +41,37 @@ TEST_CASE("AutoGrad") {
         CheckData(v3,
                   "[[0, 0, 0, 0],\n"
                   " [0, 0, 0, 0]]");
+    }
+
+    // ----------------------------- Basic methods -----------------------------
+    SECTION("Basic methods") {
+        const Variable v0;
+        const Variable v1 = {1.f, 2.f};
+        const Variable v2 = {3.f, 4.f};
+        auto v3 = v1;
+        auto v12 = v1 - v2;
+        CHECK(v0.id() != v1.id());
+        CHECK(v1.id() == v3.id());
+        CHECK(v0.empty());
+        CHECK(!v1.empty());
+        CHECK(v0.size() == 0);
+        CHECK(v1.size() == 2);
+        CHECK(v0.shape() == Shape{0});
+        CHECK(v1.shape() == Shape{2});
+        CHECK(v0.ndim() == 1);
+        CHECK(v1.ndim() == 1);
+        v12.backward();
+        // Nothing changed after backward
+        CHECK(v0.id() != v1.id());
+        CHECK(v1.id() == v3.id());
+        CHECK(v0.empty());
+        CHECK(!v1.empty());
+        CHECK(v0.size() == 0);
+        CHECK(v1.size() == 2);
+        CHECK(v0.shape() == Shape{0});
+        CHECK(v1.shape() == Shape{2});
+        CHECK(v0.ndim() == 1);
+        CHECK(v1.ndim() == 1);
     }
 
     // ------------------------- Arithmetic functions --------------------------
