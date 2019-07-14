@@ -72,7 +72,7 @@ public:
 
     NdArray data() const;
     NdArray grad() const;
-    void backward(bool clear_grads = true, bool retain_grads = false);
+    void backward(bool clear_grads = true);
 
     void setCreator(Function f);
     Function getCreator() const;
@@ -362,7 +362,7 @@ NdArray Variable::grad() const {
     return m_sub->grad;
 }
 
-void Variable::backward(bool clear_grads, bool retain_grads) {
+void Variable::backward(bool clear_grads) {
     Function last_creator = m_sub->creator;
 
     // Resolve chain
@@ -400,9 +400,7 @@ void Variable::backward(bool clear_grads, bool retain_grads) {
         // Remove all members (input, output and rank)
         func.clear();
         // Remove used gradient
-        if (!retain_grads) {
-            ClearGrads(outputs);
-        }
+        ClearGrads(outputs);
     }
 }
 
