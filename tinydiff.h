@@ -565,6 +565,7 @@ public:
 
     void setCreator(Function f);
     Function getCreator() const;
+    void clearData();
     void clearGrad();
     void addGrad(const NdArray& grad);
 
@@ -4213,8 +4214,9 @@ Variable::~Variable() = default;
 class Variable::Substance {
 public:
     Substance() {}
-    Substance(const NdArray& v_) : v(v_) {}
-    NdArray v;
+    Substance(const NdArray& data_) : data(data_) {}
+
+    NdArray data;
     NdArray grad;
     Function creator;
 };
@@ -4246,28 +4248,28 @@ Variable::Variable(FloatList<9> init_list) : Variable(NdArray(init_list)) {}
 
 // ------------------------------- Basic methods -------------------------------
 uintptr_t Variable::id() const {
-    return m_sub->v.id();
+    return m_sub->data.id();
 }
 
 bool Variable::empty() const {
-    return m_sub->v.empty();
+    return m_sub->data.empty();
 }
 
 size_t Variable::size() const {
-    return m_sub->v.size();
+    return m_sub->data.size();
 }
 
 const Shape& Variable::shape() const {
-    return m_sub->v.shape();
+    return m_sub->data.shape();
 }
 
 size_t Variable::ndim() const {
-    return m_sub->v.ndim();
+    return m_sub->data.ndim();
 }
 
 // ------------------------ Unique methods for Variable ------------------------
 NdArray Variable::data() const {
-    return m_sub->v;
+    return m_sub->data;
 }
 
 NdArray Variable::grad() const {
@@ -4326,6 +4328,10 @@ Function Variable::getCreator() const {
     return m_sub->creator;
 }
 
+void Variable::clearData() {
+    m_sub->data = NdArray();
+}
+
 void Variable::clearGrad() {
     m_sub->grad = NdArray();
 }
@@ -4333,7 +4339,7 @@ void Variable::clearGrad() {
 void Variable::addGrad(const NdArray& grad) {
     // Initialize its shape
     if (m_sub->grad.empty()) {
-        m_sub->grad = NdArray::Zeros(m_sub->v.shape());  // TODO: Omit filling
+        m_sub->grad = NdArray::Zeros(m_sub->data.shape());  // TODO: Omit filling
     }
     // Accumulate gradient for broadcasting
     //   Note: When broadcasting succeeded in forwarding operation, the
