@@ -430,6 +430,11 @@ NdArray Where(const NdArray& cond, float x, float y);
 // Shape functions
 NdArray Reshape(const NdArray& x, const Shape& shape);
 NdArray Squeeze(const NdArray& x);
+// Grouping functions
+NdArray Stack(const std::vector<NdArray>& xs, int axis = 0);
+NdArray Concatenate(const std::vector<NdArray>& xs, int axis = 0);
+std::vector<NdArray> Split(const NdArray& x, int n_section, int axis = 0);
+std::vector<NdArray> Split(const NdArray& x, const Index& idxs, int axis = 0);
 // Inverse
 NdArray Inv(const NdArray& x);
 // ------------------------ In-place Operator Functions ------------------------
@@ -866,41 +871,87 @@ NdArray CreateRandomArray(const Shape& shape, D&& dist, R&& rand_engine) {
 }
 
 // ----------------------- Utilities for NdArray (Slice) -----------------------
-static void CopySliceImpl(NdArray::ConstIter& src_data, NdArray::Iter& dst_data,
-                          const Shape& src_shape, const SliceIndex& slice_index,
-                          const std::vector<int>& child_sizes, size_t depth) {
-    if (depth < src_shape.size()) {
-        const auto& si = slice_index[depth];
-        // Add previous offset
-        src_data += child_sizes[depth] * si.first;
-        // Copy
-        for (int i = si.first; i < si.second; i++) {
-            // Recursive call
-            CopySliceImpl(src_data, dst_data, src_shape, slice_index,
-                          child_sizes, depth + 1);
+static void CopySliceImpl(const NdArray::ConstIter& src_data,
+                          const NdArray::Iter& ret_data, const Shape& ret_shape,
+                          const std::vector<int>& prev_offsets,
+                          const std::vector<int>& post_offsets,
+                          const int src_step_top, const int ret_step_top) {
+    const size_t n_depth = ret_shape.size();
+
+    // Run in parallel (Only top level)
+    RunParallel(ret_shape[0], [&](int ret_top) {
+        const int ret_idx_base = ret_top * ret_step_top;
+        const int src_idx_base = ret_top * src_step_top + prev_offsets[0];
+
+        // Create stacks and counter
+        std::vector<int> ret_cnts(n_depth);
+        size_t depth = 1;  // Start from 1
+        int src_idx = 0;
+
+        for (int ret_idx = 0; ret_idx < ret_step_top; ret_idx++) {
+            // Go down
+            for (; depth < n_depth; depth++) {
+                src_idx += prev_offsets[depth];  // Forward prev offset
+            }
+
+            // Operate
+            ret_data[ret_idx_base + ret_idx] = src_data[src_idx_base + src_idx];
+            src_idx += 1;  // Forward normally
+
+            // Go up and count (Down to 1)
+            for (; 1 < depth; depth--) {
+                const size_t prev_d = depth - 1;
+                ret_cnts[prev_d]++;  // Count up
+                if (ret_cnts[prev_d] < ret_shape[prev_d]) {
+                    break;  // Continue normally
+                }
+                // Go upper depth
+                ret_cnts[prev_d] = 0;             // Clear count
+                src_idx += post_offsets[prev_d];  // Forward post offset
+            }
         }
-        // Add post offset
-        src_data += child_sizes[depth] * (src_shape[depth] - si.second);
-    } else {
-        // Copy
-        *(dst_data++) = *(src_data++);
-    }
+    });
 }
 
-static NdArray CopySlice(const NdArray& src, const Shape& slice_shape,
+template <bool IsPrev>
+std::vector<int> ComputeSliceOffset(const std::vector<int>& child_sizes,
+                                    const SliceIndex& slice_index,
+                                    const Shape& src_shape) {
+    std::vector<int> offsets;
+    offsets.reserve(child_sizes.size());
+    for (size_t depth = 0; depth < child_sizes.size(); depth++) {
+        const auto& si = slice_index[depth];
+        const int len = (IsPrev ? si.first : src_shape[depth] - si.second);
+        offsets.push_back(child_sizes[depth] * len);
+    }
+    return offsets;
+}
+
+static NdArray CopySlice(const NdArray& src, const Shape& ret_shape,
                          const SliceIndex& slice_index) {
     const Shape& src_shape = src.shape();
 
-    // Pre-compute child sizes (index offsets)
+    // Pre-compute child sizes
     const std::vector<int>& child_sizes = ComputeChildSizes(src_shape);
+    // Pre-compute offsets
+    const std::vector<int>& prev_offsets =
+            ComputeSliceOffset<true>(child_sizes, slice_index, src_shape);
+    const std::vector<int>& post_offsets =
+            ComputeSliceOffset<false>(child_sizes, slice_index, src_shape);
+
+    // Pre-compute top steps for parallel
+    const int ret_step_top = std::accumulate(
+            ret_shape.begin() + 1, ret_shape.end(), 1, std::multiplies<int>());
+    const int src_step_top = child_sizes[0];
 
     // Create slice instance
-    NdArray ret(slice_shape);
+    NdArray ret(ret_shape);
 
     // Start to copy
     auto&& src_data = src.data();
-    auto&& dst_data = ret.data();
-    CopySliceImpl(src_data, dst_data, src_shape, slice_index, child_sizes, 0);
+    auto&& ret_data = ret.data();
+    CopySliceImpl(src_data, ret_data, ret_shape, prev_offsets, post_offsets,
+                  src_step_top, ret_step_top);
 
     return ret;
 }
@@ -1325,21 +1376,20 @@ static auto ComputeReduceSizes(const Shape& src_shape, const size_t axis) {
     }
 
     // Compute sizes
-    int upper_size = 1, lower_size = 1, n_reduce = 0;
+    int n_upper = 1, n_lower = 1, n_reduce = 0;
     for (size_t dim = 0; dim < src_shape.size(); dim++) {
         // Sizes
         if (dim < axis) {
-            upper_size *= src_shape[dim];
+            n_upper *= src_shape[dim];
         } else if (axis < dim) {
-            lower_size *= src_shape[dim];
+            n_lower *= src_shape[dim];
         } else {
             n_reduce = src_shape[dim];
         }
     }
 
     // Return
-    return std::make_tuple(std::move(ret_shape), upper_size, lower_size,
-                           n_reduce);
+    return std::make_tuple(std::move(ret_shape), n_upper, n_lower, n_reduce);
 }
 
 template <typename F>
@@ -1359,8 +1409,8 @@ NdArray ReduceAxisOne(const NdArray& src, const size_t axis, const float init_v,
     // Compute sizes
     auto reduce_sizes = ComputeReduceSizes(src_shape, axis);
     const Shape& ret_shape = std::get<0>(reduce_sizes);
-    const int upper_size = std::get<1>(reduce_sizes);
-    const int lower_size = std::get<2>(reduce_sizes);
+    const int n_upper = std::get<1>(reduce_sizes);
+    const int n_lower = std::get<2>(reduce_sizes);
     const int n_reduce = std::get<3>(reduce_sizes);
 
     // Create result array with fill
@@ -1371,11 +1421,11 @@ NdArray ReduceAxisOne(const NdArray& src, const size_t axis, const float init_v,
 
     // Reduce function
     auto&& reduce = [=](int u_idx) {
-        const int ret_idx_base = u_idx * lower_size;
-        const int src_idx_base0 = u_idx * n_reduce * lower_size;
-        for (int r_idx = 0; r_idx < n_reduce; r_idx++) {
-            const int src_idx_base1 = src_idx_base0 + r_idx * lower_size;
-            for (int l_idx = 0; l_idx < lower_size; l_idx++) {
+        const int ret_idx_base = u_idx * n_lower;
+        const int src_idx_base0 = u_idx * n_reduce * n_lower;
+        for (int redu_idx = 0; redu_idx < n_reduce; redu_idx++) {
+            const int src_idx_base1 = src_idx_base0 + redu_idx * n_lower;
+            for (int l_idx = 0; l_idx < n_lower; l_idx++) {
                 // Reduce
                 float& r = ret_data[ret_idx_base + l_idx];
                 const float s = src_data[src_idx_base1 + l_idx];
@@ -1384,12 +1434,12 @@ NdArray ReduceAxisOne(const NdArray& src, const size_t axis, const float init_v,
         }
     };
 
-    // TODO: Run parallel for `axis == 0` (means `upper_size == 1`)
+    // TODO: Run parallel for `axis == 0` (means `n_upper == 1`)
 
 #if 1  // Run in parallel
-    RunParallel(upper_size, reduce);
+    RunParallel(n_upper, reduce);
 #else  // Run sequentially
-    for (int u_idx = 0; u_idx < upper_size; u_idx++) {
+    for (int u_idx = 0; u_idx < n_upper; u_idx++) {
         reduce(u_idx);
     }
 #endif
@@ -1731,6 +1781,285 @@ NdArray CrossNdArrayNdMd(const NdArray& lhs, const NdArray& rhs, F op) {
     return ret;
 }
 
+// ----------------------- Utilities for NdArray (Stack) -----------------------
+static Shape CheckStackable(const std::vector<NdArray>& xs, int axis) {
+    // Check empty
+    if (xs.empty()) {
+        throw std::runtime_error("Need at least one array to stack");
+    }
+    // Check same shape
+    const Shape& shape = xs[0].shape();
+    for (size_t i = 1; i < xs.size(); i++) {
+        if (shape != xs[i].shape()) {
+            throw std::runtime_error("all input arrays must have the same "
+                                     "shape");
+        }
+    }
+    // Check axis
+    if (axis < 0 || static_cast<int>(xs.size()) < axis) {
+        throw std::runtime_error("Out of bounds for dimension to stack");
+    }
+    return shape;
+}
+
+static auto ComputeStackSizes(size_t n_src, const Shape& src_shape, int axis) {
+    const auto& src_s_iter0 = src_shape.begin();
+    const auto& src_s_iter1 = src_shape.begin() + axis;
+    const auto& src_s_iter2 = src_shape.end();
+    const auto& mul = std::multiplies<int>();
+
+    // Sizes
+    const int n_upper = std::accumulate(src_s_iter0, src_s_iter1, 1, mul);
+    const int n_lower = std::accumulate(src_s_iter1, src_s_iter2, 1, mul);
+    const int n_stack = static_cast<int>(n_src);
+
+    // Create result shape
+    Shape ret_shape;
+    ret_shape.insert(ret_shape.end(), src_s_iter0, src_s_iter1);  // Upper
+    ret_shape.push_back(n_stack);  // Stacking dimension
+    ret_shape.insert(ret_shape.end(), src_s_iter1, src_s_iter2);  // Lower
+
+    return std::make_tuple(std::move(ret_shape), n_upper, n_lower, n_stack);
+}
+
+static NdArray StackNdArray(const std::vector<NdArray>& xs, int axis) {
+    // Check it is possible to stack
+    const Shape& src_shape = CheckStackable(xs, axis);
+
+    // Compute stack sizes
+    auto stack_sizes = ComputeStackSizes(xs.size(), src_shape, axis);
+    const Shape& ret_shape = std::get<0>(stack_sizes);
+    const int n_upper = std::get<1>(stack_sizes);
+    const int n_lower = std::get<2>(stack_sizes);
+    const int n_stack = std::get<3>(stack_sizes);
+
+    // Create result array
+    NdArray ret(ret_shape);
+    auto ret_data = ret.data();
+
+    // Core function to copy
+    auto copy_lower_func = [&](const int stack_idx, const int ret_idx_base0,
+                               const int src_idx_base) {
+        const int ret_idx_base1 = (ret_idx_base0 + stack_idx) * n_lower;
+        auto src_data = xs[static_cast<size_t>(stack_idx)].data();
+        for (int l_idx = 0; l_idx < n_lower; l_idx++) {
+            ret_data[ret_idx_base1 + l_idx] = src_data[src_idx_base + l_idx];
+        }
+    };
+
+    // Switch by upper size
+    if (n_upper == 1) {
+        // Run in parallel of stack direction
+        RunParallel(n_stack,
+                    [&](int stack_idx) { copy_lower_func(stack_idx, 0, 0); });
+    } else {
+        // Run in parallel of high dimension's direction
+        RunParallel(n_upper, [&](int u_idx) {
+            const int ret_idx_base0 = u_idx * n_stack;
+            const int src_idx_base = u_idx * n_lower;
+            for (int stack_idx = 0; stack_idx < n_stack; stack_idx++) {
+                copy_lower_func(stack_idx, ret_idx_base0, src_idx_base);
+            }
+        });
+    }
+
+    return ret;
+}
+
+// -------------------- Utilities for NdArray (Concatenate) --------------------
+static void CheckConcatenatable(const std::vector<NdArray>& xs, int axis) {
+    // Check empty
+    if (xs.empty()) {
+        throw std::runtime_error("Need at least one array to concatenate");
+    }
+    // Check same shape except axis dimension
+    const Shape& fst_shape = xs[0].shape();
+    const size_t axis_l = static_cast<size_t>(axis);
+    const std::string error_msg = "all the input array dimensions except for "
+                                  "the concatenation axis must match exactly";
+    for (size_t i = 1; i < xs.size(); i++) {
+        const Shape& cur_shape = xs[i].shape();
+        // Check the size of shapes
+        if (fst_shape.size() != cur_shape.size()) {
+            throw std::runtime_error(error_msg);
+        }
+        // Check dimensions except axis
+        for (size_t i = 0; i < fst_shape.size(); i++) {
+            if (i == axis_l) {
+                continue;
+            }
+            if (fst_shape[i] != cur_shape[i]) {
+                throw std::runtime_error(error_msg);
+            }
+        }
+    }
+    // Check axis
+    if (axis < 0 || static_cast<int>(fst_shape.size()) <= axis) {
+        throw std::runtime_error("Out of bounds for dimension to concatenate");
+    }
+}
+
+static auto ComputeConcatSizes(const std::vector<NdArray>& xs, int axis) {
+    const Shape& fst_shape = xs[0].shape();
+    const auto& src_s_iter0 = fst_shape.begin();
+    const auto& src_s_iter1 = fst_shape.begin() + axis;
+    const auto& src_s_iter2 = fst_shape.begin() + axis + 1;
+    const auto& src_s_iter3 = fst_shape.end();
+    const auto& mul = std::multiplies<int>();
+
+    // Upper common size
+    const int n_upper = std::accumulate(src_s_iter0, src_s_iter1, 1, mul);
+    // Lower size depends on each sources
+    std::vector<int> n_lowers;
+    for (auto&& x : xs) {
+        n_lowers.push_back(static_cast<int>(x.size()) / n_upper);
+    }
+    // Result indices of concatenation
+    std::vector<int> concat_offsets;
+    int n_lower_accum = 0;
+    for (auto&& n_lower : n_lowers) {
+        concat_offsets.push_back(n_lower_accum);
+        n_lower_accum += n_lower;
+    }
+    // Step of concatenating dimension
+    const int concat_step = n_lower_accum;
+
+    // Concatenating dimensions
+    int concat_dim = 0;
+    const size_t axis_l = static_cast<size_t>(axis);
+    for (auto&& x : xs) {
+        concat_dim += x.shape()[axis_l];
+    }
+
+    // Create result shape
+    Shape ret_shape;
+    ret_shape.insert(ret_shape.end(), src_s_iter0, src_s_iter1);  // Upper
+    ret_shape.push_back(concat_dim);  // Concatenating dimension
+    ret_shape.insert(ret_shape.end(), src_s_iter2, src_s_iter3);  // Lower
+
+    return std::make_tuple(std::move(ret_shape), n_upper, std::move(n_lowers),
+                           xs.size(), std::move(concat_offsets), concat_step);
+}
+
+static NdArray ConcatenateNdArray(const std::vector<NdArray>& xs, int axis) {
+    // Check it is possible to concatenate
+    CheckConcatenatable(xs, axis);
+
+    // Compute concat sizes
+    auto concat_sizes = ComputeConcatSizes(xs, axis);
+    const Shape& ret_shape = std::get<0>(concat_sizes);
+    const int n_upper = std::get<1>(concat_sizes);
+    const std::vector<int>& n_lowers = std::get<2>(concat_sizes);
+    const size_t n_concat = std::get<3>(concat_sizes);
+    const std::vector<int>& concat_offsets = std::get<4>(concat_sizes);
+    const int concat_step = std::get<5>(concat_sizes);
+
+    // Create result array
+    NdArray ret(ret_shape);
+    auto ret_data = ret.data();
+
+    // Core function to copy
+    auto copy_lower_func = [&](const size_t concat_idx, const int ret_idx_base0,
+                               const int src_idx_base) {
+        const int ret_idx_base1 = ret_idx_base0 + concat_offsets[concat_idx];
+        auto src_data = xs[concat_idx].data();
+        for (int l_idx = 0; l_idx < n_lowers[concat_idx]; l_idx++) {
+            ret_data[ret_idx_base1 + l_idx] = src_data[src_idx_base + l_idx];
+        }
+    };
+
+    // Switch by upper size
+    if (n_upper == 1) {
+        // Run in parallel of stack direction
+        RunParallel(static_cast<int>(n_concat), [&](int concat_idx) {
+            copy_lower_func(static_cast<size_t>(concat_idx), 0, 0);
+        });
+    } else {
+        // Run in parallel of high dimension's direction
+        RunParallel(n_upper, [&](int u_idx) {
+            const int ret_idx_base0 = u_idx * concat_step;
+            for (size_t concat_idx = 0; concat_idx < n_concat; concat_idx++) {
+                const int src_idx_base = u_idx * n_lowers[concat_idx];
+                copy_lower_func(concat_idx, ret_idx_base0, src_idx_base);
+            }
+        });
+    }
+
+    return ret;
+}
+
+// ----------------------- Utilities for NdArray (Split) -----------------------
+static void CheckSplitAxis(const NdArray& x, int axis) {
+    if (axis < 0 || static_cast<int>(x.shape().size()) <= axis) {
+        throw std::runtime_error("Invalid axis to split");
+    }
+}
+
+static std::vector<NdArray> SplitNdArrayImpl(const NdArray& x,
+                                             const Index& idxs, int axis) {
+    // Note: Axis must be checked previously.
+
+    const size_t axis_l = static_cast<size_t>(axis);
+    const Shape& x_shape = x.shape();
+    const int idx_end = static_cast<int>(x_shape[axis_l]);
+
+    // Create base of slice index
+    SliceIndex slice_idx;
+    for (auto&& dim : x_shape) {
+        slice_idx.push_back({0, dim});
+    }
+
+    // Result arrays
+    std::vector<NdArray> rets;
+
+    // Resolve for each index
+    int prev_idx = 0;
+    for (auto&& curr_idx_raw : idxs) {
+        // Upper limit of index
+        const int curr_idx = std::min(curr_idx_raw, idx_end);
+        // Create one of slice index
+        slice_idx[axis_l] = std::make_pair(prev_idx, curr_idx);  // Overwrite
+        rets.push_back(x.slice(slice_idx));  // Register slice
+        // Go to next index
+        prev_idx = curr_idx;
+    }
+
+    // Rest of index
+    slice_idx[axis_l] = std::make_pair(prev_idx, idx_end);  // Overwrite
+    rets.push_back(x.slice(slice_idx));                     // Register slice
+
+    return rets;
+}
+
+static std::vector<NdArray> SplitNdArray(const NdArray& x, int n_section,
+                                         int axis) {
+    // Check split axis
+    CheckSplitAxis(x, axis);
+    // Check splitting size
+    const int dim_size = x.shape()[static_cast<size_t>(axis)];
+    if (dim_size % n_section != 0) {
+        throw std::runtime_error("Invalid section number in an equal division");
+    }
+    const int section_size = dim_size / n_section;
+
+    // Create splitting indices
+    Index idxs;
+    for (int sec_i = 1; sec_i < n_section; sec_i++) {  // no first one
+        idxs.push_back(section_size * sec_i);
+    }
+
+    // Split by indices
+    return SplitNdArrayImpl(x, idxs, axis);
+}
+
+static std::vector<NdArray> SplitNdArray(const NdArray& x, const Index& idxs,
+                                         int axis) {
+    // Check split axis
+    CheckSplitAxis(x, axis);
+    // Split by indices
+    return SplitNdArrayImpl(x, idxs, axis);
+}
+
 // ---------------------- Utilities for NdArray (Inverse) ----------------------
 static int CheckInversable(const Shape& shape) {
     if (shape.size() < 2) {
@@ -1824,26 +2153,49 @@ public:
     ~MemProfiler() {}
 
     static void Register(std::shared_ptr<float> v, size_t size) {
-        Unregister(v);  // Ensure not to be registered.
+        // Compare with previously registered value
+        if (s_mem_sizes.count(v) && s_mem_sizes[v] != size) {
+            throw std::runtime_error("Invalid register for MemProfiler.");
+        }
+        // Register (overwrite)
         s_mem_sizes[v] = size;
     }
 
-    static void Unregister(std::shared_ptr<float> v) {
-        // Just remove pointer entry
-        s_mem_sizes.erase(v);
+    static void Unregister(const std::shared_ptr<float>& v) {
+        // If the pointer is owned by only two (there is no copy of the
+        // pointer), unregister
+        if (v.use_count() <= 2) {
+            s_mem_sizes.erase(v);
+        }
     }
 
     static size_t GetNumInstance() {
+        // First update the instances
+        Update();
+        // Return
         return s_mem_sizes.size();
     }
 
     static size_t GetTotalMemory() {
+        // First update the instances
+        Update();
         // Sum up memory sizes
         size_t sum_mem = 0;
         for (auto&& key_val : s_mem_sizes) {
             sum_mem += key_val.second;
         }
         return sum_mem;
+    }
+
+    static void Update() {
+        // Remove entries which have only 1 reference.
+        for (auto it = s_mem_sizes.begin(); it != s_mem_sizes.end();) {
+            if (it->first.use_count() <= 1) {
+                it = s_mem_sizes.erase(it);
+            } else {
+                ++it;
+            }
+        }
     }
 
 private:
@@ -2393,10 +2745,10 @@ NdArray NdArray::slice(const SliceIndex& slice_index) const {
             int s = (0 <= si.first) ? si.first : shape[i] + si.first;
             int e = (0 <= si.second) ? si.second : shape[i] + si.second;
             // Clamp
-            s = Clamp(s, 0, shape[i] - 1);  // Start must be in range.
-            e = Clamp(e, 0, shape[i]);      // End can be next of the last.
+            s = Clamp(s, 0, shape[i]);  // must be next of the last.
+            e = Clamp(e, 0, shape[i]);
             // Register
-            slice_shape.push_back(e - s);
+            slice_shape.push_back(std::max(e - s, 0));  // Escape negative
             new_index.push_back({s, e});
         }
     }
@@ -3342,6 +3694,23 @@ NdArray Squeeze(const NdArray& x) {
         }
     }
     return x.reshape(ret_shape);
+}
+
+// Grouping functions
+NdArray Stack(const std::vector<NdArray>& xs, int axis) {
+    return StackNdArray(xs, axis);
+}
+
+NdArray Concatenate(const std::vector<NdArray>& xs, int axis) {
+    return ConcatenateNdArray(xs, axis);
+}
+
+std::vector<NdArray> Split(const NdArray& x, int n_section, int axis) {
+    return SplitNdArray(x, n_section, axis);
+}
+
+std::vector<NdArray> Split(const NdArray& x, const Index& idxs, int axis) {
+    return SplitNdArray(x, idxs, axis);
 }
 
 // Inverse
