@@ -69,6 +69,7 @@ public:
     size_t size() const;
     const Shape& shape() const;
     size_t ndim() const;
+    Variable copyUnretained() const;
 
     NdArray data() const;
     NdArray grad() const;
@@ -248,6 +249,26 @@ std::vector<Function> ResolveChain(const Function& start_func) {
     return ret_funcs;
 }
 
+static Variables RetainVariables(const Variables& vs,
+                                 const std::vector<size_t>& retain_idxs) {
+    // Create retaining mask
+    std::vector<char> mask(vs.size(), false);
+    for (auto&& idx : retain_idxs) {
+        mask[idx] = true;
+    }
+
+    // Copy switching shallow copy or lightweight copy
+    Variables retained;
+    for (size_t i = 0; i < vs.size(); i++) {
+        if (mask[i]) {
+            retained.push_back(vs[i]);
+        } else {
+            retained.push_back(vs[i].copyUnretained());
+        }
+    }
+    return retained;
+}
+
 static NdArray SumTo(const NdArray& x, const Shape& shape) {
     const Shape& x_shape = x.shape();
     // No need
@@ -301,11 +322,11 @@ Variable::~Variable() = default;
 // --------------------------------- Substance ---------------------------------
 class Variable::Substance {
 public:
-    Substance() {}
-    Substance(const NdArray& data_) : data(data_) {}
+    Substance(const NdArray& data_ = {}) : data(data_), shape(data_.shape()) {}
 
     NdArray data;
     NdArray grad;
+    Shape shape;
     Function creator;
 };
 
@@ -348,11 +369,19 @@ size_t Variable::size() const {
 }
 
 const Shape& Variable::shape() const {
-    return m_sub->data.shape();
+    return m_sub->shape;
 }
 
 size_t Variable::ndim() const {
-    return m_sub->data.ndim();
+    return m_sub->shape.size();
+}
+
+Variable Variable::copyUnretained() const {
+    // Copy all (NdArray is copied in shallow)
+    auto sub = std::make_shared<Substance>(*m_sub);
+    // Unretain
+    sub->data = NdArray();
+    return Variable(sub);
 }
 
 // ------------------------ Unique methods for Variable ------------------------
@@ -417,17 +446,17 @@ Function Variable::getCreator() const {
 }
 
 void Variable::clearData() {
-    m_sub->data = NdArray();
+    m_sub->data.resize({0});
 }
 
 void Variable::clearGrad() {
-    m_sub->grad = NdArray();
+    m_sub->grad.resize({0});
 }
 
 void Variable::addGrad(const NdArray& grad) {
     // Initialize its shape
     if (m_sub->grad.empty()) {
-        m_sub->grad = NdArray::Zeros(m_sub->data.shape());  // TODO: Omit filling
+        m_sub->grad.resize(m_sub->shape);
     }
     // Accumulate gradient for broadcasting
     //   Note: When broadcasting succeeded in forwarding operation, the
@@ -483,6 +512,10 @@ Function::~Function() = default;
 // --------------------------------- Substance ---------------------------------
 class Function::Substance {
 public:
+    Substance(const std::vector<size_t>& retain_inp_idxs_ = {},
+              const std::vector<size_t>& retain_out_idxs_ = {})
+        : retain_inp_idxs(retain_inp_idxs_),
+          retain_out_idxs(retain_out_idxs_) {}
     virtual ~Substance() {}
     virtual NdArrays forward(const NdArrays& x) {
         (void)x;
@@ -497,6 +530,8 @@ public:
     size_t rank = 0;
     Variables inputs;
     Variables outputs;
+    std::vector<size_t> retain_inp_idxs;
+    std::vector<size_t> retain_out_idxs;
 };
 
 // ---------------------------------- Methods ----------------------------------
@@ -510,8 +545,8 @@ Variables Function::operator()(const Variables& x) {
     auto&& y_data = forward(std::move(x_data));  // with free
     auto&& y = CvtToVars(std::move(y_data));     // with free
     // Retain input/output variables
-    m_sub->inputs = x;
-    m_sub->outputs = y;
+    m_sub->inputs = RetainVariables(x, m_sub->retain_inp_idxs);
+    m_sub->outputs = RetainVariables(y, m_sub->retain_out_idxs);
     // Set rank of this function
     m_sub->rank = 0;
     for (auto&& x_elem : x) {
@@ -560,6 +595,7 @@ namespace F {
 
 class AddSub : public Function::Substance {
 public:
+    AddSub() : Substance({0, 1}, {}) {}  // Retaining indices
     virtual ~AddSub() {}
     virtual NdArrays forward(const NdArrays& x) {
         CheckVecSize(x, 2);
@@ -574,6 +610,7 @@ public:
 
 class SubSub : public Function::Substance {
 public:
+    SubSub() : Substance({0, 1}, {}) {}  // Retaining indices
     virtual ~SubSub() {}
     virtual NdArrays forward(const NdArrays& x) {
         CheckVecSize(x, 2);
@@ -588,6 +625,7 @@ public:
 
 class MulSub : public Function::Substance {
 public:
+    MulSub() : Substance({0, 1}, {}) {}  // Retaining indices
     virtual ~MulSub() {}
     virtual NdArrays forward(const NdArrays& x) {
         CheckVecSize(x, 2);
@@ -603,6 +641,7 @@ public:
 
 class DivSub : public Function::Substance {
 public:
+    DivSub() : Substance({0, 1}, {}) {}  // Retaining indices
     virtual ~DivSub() {}
     virtual NdArrays forward(const NdArrays& x) {
         CheckVecSize(x, 2);
@@ -619,6 +658,7 @@ public:
 
 class ExpSub : public Function::Substance {
 public:
+    ExpSub() : Substance({}, {0}) {}  // Retaining indices
     virtual ~ExpSub() {}
     virtual NdArrays forward(const NdArrays& x) {
         CheckVecSize(x, 1);
