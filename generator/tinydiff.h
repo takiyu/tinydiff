@@ -50,7 +50,6 @@ public:
     Variable& operator=(Variable&&);
     ~Variable();
 
-    Variable(float v);
     Variable(const NdArray& v);
 
     Variable(FloatList<0> init_list);
@@ -89,11 +88,26 @@ private:
 };
 
 // --------------------------------- Operators ---------------------------------
+// Print
 std::ostream& operator<<(std::ostream& os, const Variable& x);
+// Single
+Variable operator+(const Variable& x);
+Variable operator-(const Variable& x);
+// Arithmetic (NdArray, NdArray)
 Variable operator+(const Variable& lhs, const Variable& rhs);
 Variable operator-(const Variable& lhs, const Variable& rhs);
 Variable operator*(const Variable& lhs, const Variable& rhs);
 Variable operator/(const Variable& lhs, const Variable& rhs);
+// Arithmetic (NdArray, float)
+Variable operator+(const Variable& lhs, float rhs);
+Variable operator-(const Variable& lhs, float rhs);
+Variable operator*(const Variable& lhs, float rhs);
+Variable operator/(const Variable& lhs, float rhs);
+// Arithmetic (float, NdArray)
+Variable operator+(float lhs, const Variable& rhs);
+Variable operator-(float lhs, const Variable& rhs);
+Variable operator*(float lhs, const Variable& rhs);
+Variable operator/(float lhs, const Variable& rhs);
 
 // =============================================================================
 // ================================== Function =================================
@@ -135,11 +149,26 @@ protected:
 
 namespace F {
 
-Variable Add(Variable lhs, Variable rhs);
-Variable Sub(Variable lhs, Variable rhs);
-Variable Mul(Variable lhs, Variable rhs);
-Variable Div(Variable lhs, Variable rhs);
-Variable Exp(Variable x);
+// Single
+Variable Pos(const Variable& x);
+Variable Neg(const Variable& x);
+// Arithmetic (NdArray, NdArray)
+Variable Add(const Variable& lhs, const Variable& rhs);
+Variable Sub(const Variable& lhs, const Variable& rhs);
+Variable Mul(const Variable& lhs, const Variable& rhs);
+Variable Div(const Variable& lhs, const Variable& rhs);
+// Arithmetic (NdArray, float)
+Variable Add(const Variable& lhs, float rhs);
+Variable Sub(const Variable& lhs, float rhs);
+Variable Mul(const Variable& lhs, float rhs);
+Variable Div(const Variable& lhs, float rhs);
+// Arithmetic (float, NdArray)
+Variable Add(float lhs, const Variable& rhs);
+Variable Sub(float lhs, const Variable& rhs);
+Variable Mul(float lhs, const Variable& rhs);
+Variable Div(float lhs, const Variable& rhs);
+// Basic math operators
+Variable Exp(const Variable& x);
 
 }  // namespace F
 
@@ -213,6 +242,47 @@ static void ClearGrads(T vars) {
     for (auto&& v : vars) {
         v.clearGrad();
     }
+}
+
+static void PrintVariable(std::ostream& os, const Variable& x) {
+    const static std::string HEADER = "Variable(";
+    const static std::string OFFSET = "         ";
+
+    // Pooling data string
+    std::stringstream data_ss;
+    data_ss << x.data();
+    // Split lines
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(data_ss, line, '\n')) {
+        lines.emplace_back(std::move(line));
+        line = std::string();
+    }
+
+    // Print header
+    os << HEADER;
+
+    // Print data
+    for (size_t i = 0; i < lines.size(); i++) {
+        if (i != 0) {
+            os << OFFSET;
+        }
+        os << lines[i];
+        if (i != lines.size() - 1) {
+            os << std::endl;
+        }
+    }
+    os << ", ";
+
+    // Gradient existence
+    if (x.grad().empty()) {
+        os << "grad:empty";
+    } else {
+        os << "grad:exits";
+    }
+
+    // Tail
+    os << ")";
 }
 
 // -----------------------------------------------------------------------------
@@ -331,8 +401,6 @@ public:
 };
 
 // ------------------------------- Constructors --------------------------------
-Variable::Variable(float v) : m_sub(std::make_shared<Substance>(NdArray{v})) {}
-
 Variable::Variable(const NdArray& v) : m_sub(std::make_shared<Substance>(v)) {}
 
 Variable::Variable(FloatList<0> init_list) : Variable(NdArray(init_list)) {}
@@ -468,10 +536,22 @@ void Variable::addGrad(const NdArray& grad) {
 }
 
 // --------------------------------- Operators ---------------------------------
+// Print
 std::ostream& operator<<(std::ostream& os, const Variable& x) {
-    return os << x.data();
+    PrintVariable(os, x);
+    return os;
 }
 
+// Single
+Variable operator+(const Variable& x) {
+    return F::Pos(x);
+}
+
+Variable operator-(const Variable& x) {
+    return F::Neg(x);
+}
+
+// Arithmetic (NdArray, NdArray)
 Variable operator+(const Variable& lhs, const Variable& rhs) {
     return F::Add(lhs, rhs);
 }
@@ -485,6 +565,40 @@ Variable operator*(const Variable& lhs, const Variable& rhs) {
 }
 
 Variable operator/(const Variable& lhs, const Variable& rhs) {
+    return F::Div(lhs, rhs);
+}
+
+// Arithmetic (NdArray, float)
+Variable operator+(const Variable& lhs, float rhs) {
+    return F::Add(lhs, rhs);
+}
+
+Variable operator-(const Variable& lhs, float rhs) {
+    return F::Sub(lhs, rhs);
+}
+
+Variable operator*(const Variable& lhs, float rhs) {
+    return F::Mul(lhs, rhs);
+}
+
+Variable operator/(const Variable& lhs, float rhs) {
+    return F::Div(lhs, rhs);
+}
+
+// Arithmetic (float, NdArray)
+Variable operator+(float lhs, const Variable& rhs) {
+    return F::Add(lhs, rhs);
+}
+
+Variable operator-(float lhs, const Variable& rhs) {
+    return F::Sub(lhs, rhs);
+}
+
+Variable operator*(float lhs, const Variable& rhs) {
+    return F::Mul(lhs, rhs);
+}
+
+Variable operator/(float lhs, const Variable& rhs) {
     return F::Div(lhs, rhs);
 }
 
@@ -512,26 +626,35 @@ Function::~Function() = default;
 // --------------------------------- Substance ---------------------------------
 class Function::Substance {
 public:
-    Substance(const std::vector<size_t>& retain_inp_idxs_ = {},
+    // Alias for shorter code
+    using InNd = const NdArrays&;
+
+    Substance(size_t n_inp_ = 0, size_t n_out_ = 0,
+              const std::vector<size_t>& retain_inp_idxs_ = {},
               const std::vector<size_t>& retain_out_idxs_ = {})
-        : retain_inp_idxs(retain_inp_idxs_),
+        : n_inp(n_inp_),
+          n_out(n_out_),
+          retain_inp_idxs(retain_inp_idxs_),
           retain_out_idxs(retain_out_idxs_) {}
     virtual ~Substance() {}
-    virtual NdArrays forward(const NdArrays& x) {
-        (void)x;
-        throw std::runtime_error("Invalid use of tinydiff::Function");
+
+    virtual NdArrays forward(InNd x) {
+        return x;  // Through
     }
-    virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
-                              const NdArrays& gy) {
-        (void)x, (void)y, (void)gy;
-        throw std::runtime_error("Invalid use of tinydiff::Function");
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) {
+        (void)x, (void)y;
+        return gy;  // Through
     }
 
+    // Member variables
     size_t rank = 0;
     Variables inputs;
     Variables outputs;
-    std::vector<size_t> retain_inp_idxs;
-    std::vector<size_t> retain_out_idxs;
+    // Constant member variables
+    const size_t n_inp;
+    const size_t n_out;
+    const std::vector<size_t> retain_inp_idxs;
+    const std::vector<size_t> retain_out_idxs;
 };
 
 // ---------------------------------- Methods ----------------------------------
@@ -563,12 +686,22 @@ Variables Function::operator()(const Variables& x) {
 }
 
 NdArrays Function::forward(const NdArrays& x) {
-    return m_sub->forward(x);
+    // Forward with size checking
+    CheckVecSize(x, m_sub->n_inp);
+    auto&& y = m_sub->forward(x);
+    CheckVecSize(y, m_sub->n_out);
+    return std::move(y);
 }
 
 NdArrays Function::backward(const NdArrays& x, const NdArrays& y,
                             const NdArrays& gy) {
-    return m_sub->backward(x, y, gy);
+    // Backward with size checking
+    CheckVecSize(x, m_sub->n_inp);
+    CheckVecSize(y, m_sub->n_out);
+    CheckVecSize(gy, m_sub->n_out);
+    auto&& gx = m_sub->backward(x, y, gy);
+    CheckVecSize(gx, m_sub->n_inp);
+    return std::move(gx);
 }
 
 Variables Function::getInputs() const {
@@ -593,80 +726,175 @@ size_t Function::getRank() const {
 
 namespace F {
 
-class AddSub : public Function::Substance {
-public:
-    AddSub() : Substance({0, 1}, {}) {}  // Retaining indices
-    virtual ~AddSub() {}
-    virtual NdArrays forward(const NdArrays& x) {
-        CheckVecSize(x, 2);
+// Single
+struct PosSubst : public Function::Substance {
+    PosSubst() : Substance(1, 1, {}, {}) {}  // n_inp, n_out, retain_indices
+    virtual ~PosSubst() {}
+    virtual NdArrays forward(InNd x) override {
+        return {x[0]};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {gy[0]};
+    }
+};
+
+struct NegSubst : public Function::Substance {
+    NegSubst() : Substance(1, 1, {}, {}) {}
+    virtual ~NegSubst() {}
+    virtual NdArrays forward(InNd x) override {
+        return {-x[0]};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {-gy[0]};
+    }
+};
+
+// Arithmetic (NdArray, NdArray)
+struct AddSubst : public Function::Substance {
+    AddSubst() : Substance(2, 1, {0, 1}, {}) {}
+    virtual ~AddSubst() {}
+    virtual NdArrays forward(InNd x) override {
         return {x[0] + x[1]};
     }
-    virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
-                              const NdArrays& gy) {
-        CheckVecSize(x, 2, y, 1, gy, 1);
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)y;
         return {SumTo(gy[0], x[0].shape()), SumTo(gy[0], x[1].shape())};
     }
 };
 
-class SubSub : public Function::Substance {
-public:
-    SubSub() : Substance({0, 1}, {}) {}  // Retaining indices
-    virtual ~SubSub() {}
-    virtual NdArrays forward(const NdArrays& x) {
-        CheckVecSize(x, 2);
+struct SubSubst : public Function::Substance {
+    SubSubst() : Substance(2, 1, {0, 1}, {}) {}
+    virtual ~SubSubst() {}
+    virtual NdArrays forward(InNd x) override {
         return {x[0] - x[1]};
     }
-    virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
-                              const NdArrays& gy) {
-        CheckVecSize(x, 2, y, 1, gy, 1);
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)y;
         return {SumTo(gy[0], x[0].shape()), SumTo(-gy[0], x[1].shape())};
     }
 };
 
-class MulSub : public Function::Substance {
-public:
-    MulSub() : Substance({0, 1}, {}) {}  // Retaining indices
-    virtual ~MulSub() {}
-    virtual NdArrays forward(const NdArrays& x) {
-        CheckVecSize(x, 2);
+struct MulSubst : public Function::Substance {
+    MulSubst() : Substance(2, 1, {0, 1}, {}) {}
+    virtual ~MulSubst() {}
+    virtual NdArrays forward(InNd x) override {
         return {x[0] * x[1]};
     }
-    virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
-                              const NdArrays& gy) {
-        CheckVecSize(x, 2, y, 1, gy, 1);
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)y;
         return {SumTo(gy[0] * x[1], x[0].shape()),
                 SumTo(gy[0] * x[0], x[1].shape())};
     }
 };
 
-class DivSub : public Function::Substance {
-public:
-    DivSub() : Substance({0, 1}, {}) {}  // Retaining indices
-    virtual ~DivSub() {}
-    virtual NdArrays forward(const NdArrays& x) {
-        CheckVecSize(x, 2);
+struct DivSubst : public Function::Substance {
+    DivSubst() : Substance(2, 1, {0, 1}, {}) {}
+    virtual ~DivSubst() {}
+    virtual NdArrays forward(InNd x) override {
         return {x[0] / x[1]};
     }
-    virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
-                              const NdArrays& gy) {
-        CheckVecSize(x, 2, y, 1, gy, 1);
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)y;
         const auto& gx0 = gy[0] / x[1];
         const auto& gx1 = -gx0 * x[0] / x[1];
         return {SumTo(gx0, x[0].shape()), SumTo(gx1, x[1].shape())};
     }
 };
 
-class ExpSub : public Function::Substance {
-public:
-    ExpSub() : Substance({}, {0}) {}  // Retaining indices
-    virtual ~ExpSub() {}
-    virtual NdArrays forward(const NdArrays& x) {
-        CheckVecSize(x, 1);
+// Arithmetic (NdArray, float)
+struct AddFloatSubst : public Function::Substance {
+    AddFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
+    virtual ~AddFloatSubst() {}
+    virtual NdArrays forward(InNd x) override {
+        return {x[0] + c};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)y;
+        return {SumTo(gy[0], x[0].shape())};
+    }
+    const float c;
+};
+
+struct SubFloatSubst : public Function::Substance {
+    SubFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
+    virtual ~SubFloatSubst() {}
+    virtual NdArrays forward(InNd x) override {
+        return {x[0] - c};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)y;
+        return {SumTo(gy[0], x[0].shape())};
+    }
+    const float c;
+};
+
+struct MulFloatSubst : public Function::Substance {
+    MulFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
+    virtual ~MulFloatSubst() {}
+    virtual NdArrays forward(InNd x) override {
+        return {x[0] * c};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)y;
+        return {SumTo(gy[0] * c, x[0].shape())};
+    }
+    const float c;
+};
+
+struct DivFloatSubst : public Function::Substance {
+    DivFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
+    virtual ~DivFloatSubst() {}
+    virtual NdArrays forward(InNd x) override {
+        return {x[0] / c};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)y;
+        const auto& gx0 = gy[0] / c;
+        return {SumTo(gx0, x[0].shape())};
+    }
+    const float c;
+};
+
+// Arithmetic (float, NdArray)
+struct SubFromFloatSubst : public Function::Substance {
+    SubFromFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
+    virtual ~SubFromFloatSubst() {}
+    virtual NdArrays forward(InNd x) override {
+        return {c - x[0]};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)y;
+        return {SumTo(-gy[0], x[0].shape())};
+    }
+    const float c;
+};
+
+struct DivFromFloatSubst : public Function::Substance {
+    DivFromFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
+    virtual ~DivFromFloatSubst() {}
+    virtual NdArrays forward(InNd x) override {
+        return {c / x[0]};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)y;
+        const auto& gx0 = gy[0] / x[0];
+        const auto& gx1 = -gx0 * c / x[0];
+        return {SumTo(gx1, x[0].shape())};
+    }
+    const float c;
+};
+
+// Basic math operators
+struct ExpSubst : public Function::Substance {
+    ExpSubst() : Substance(1, 1, {}, {0}) {}
+    virtual ~ExpSubst() {}
+    virtual NdArrays forward(InNd x) override {
         return {Exp(x[0])};
     }
-    virtual NdArrays backward(const NdArrays& x, const NdArrays& y,
-                              const NdArrays& gy) {
-        CheckVecSize(x, 1, y, 1, gy, 1);
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x;
         return {gy[0] * y[0]};
     }
 };
@@ -674,31 +902,78 @@ public:
 // ------------------------------- Helper Class --------------------------------
 // Helper to replace default substance with implemented one
 template <typename S>
-class FuncImplHelper : public Function {
+class FuncImpl : public Function {
 public:
-    FuncImplHelper() : Function(std::make_shared<S>()) {}
-    virtual ~FuncImplHelper() {}
+    template <typename... Args>
+    FuncImpl(Args&&... args)
+        : Function(std::make_shared<S>(std::forward<Args>(args)...)) {}
+    virtual ~FuncImpl() {}
 };
 
 // ----------------------------- Function Wrapping -----------------------------
-Variable Add(Variable lhs, Variable rhs) {
-    return FuncImplHelper<AddSub>()({lhs, rhs})[0];
+// Single
+Variable Pos(const Variable& x) {
+    return FuncImpl<PosSubst>()({x})[0];
 }
 
-Variable Sub(Variable lhs, Variable rhs) {
-    return FuncImplHelper<SubSub>()({lhs, rhs})[0];
+Variable Neg(const Variable& x) {
+    return FuncImpl<NegSubst>()({x})[0];
 }
 
-Variable Mul(Variable lhs, Variable rhs) {
-    return FuncImplHelper<MulSub>()({lhs, rhs})[0];
+// Arithmetic (NdArray, NdArray)
+Variable Add(const Variable& lhs, const Variable& rhs) {
+    return FuncImpl<AddSubst>()({lhs, rhs})[0];
 }
 
-Variable Div(Variable lhs, Variable rhs) {
-    return FuncImplHelper<DivSub>()({lhs, rhs})[0];
+Variable Sub(const Variable& lhs, const Variable& rhs) {
+    return FuncImpl<SubSubst>()({lhs, rhs})[0];
 }
 
-Variable Exp(Variable x) {
-    return FuncImplHelper<ExpSub>()({x})[0];
+Variable Mul(const Variable& lhs, const Variable& rhs) {
+    return FuncImpl<MulSubst>()({lhs, rhs})[0];
+}
+
+Variable Div(const Variable& lhs, const Variable& rhs) {
+    return FuncImpl<DivSubst>()({lhs, rhs})[0];
+}
+
+// Arithmetic (NdArray, float)
+Variable Add(const Variable& lhs, float rhs) {
+    return FuncImpl<AddFloatSubst>(rhs)({lhs})[0];
+}
+
+Variable Sub(const Variable& lhs, float rhs) {
+    return FuncImpl<SubFloatSubst>(rhs)({lhs})[0];
+}
+
+Variable Mul(const Variable& lhs, float rhs) {
+    return FuncImpl<MulFloatSubst>(rhs)({lhs})[0];
+}
+
+Variable Div(const Variable& lhs, float rhs) {
+    return FuncImpl<DivFloatSubst>(rhs)({lhs})[0];
+}
+
+// Arithmetic (float, NdArray)
+Variable Add(float lhs, const Variable& rhs) {
+    return FuncImpl<AddFloatSubst>(lhs)({rhs})[0];
+}
+
+Variable Sub(float lhs, const Variable& rhs) {
+    return FuncImpl<SubFromFloatSubst>(lhs)({rhs})[0];
+}
+
+Variable Mul(float lhs, const Variable& rhs) {
+    return FuncImpl<MulFloatSubst>(lhs)({rhs})[0];
+}
+
+Variable Div(float lhs, const Variable& rhs) {
+    return FuncImpl<DivFromFloatSubst>(lhs)({rhs})[0];
+}
+
+// Basic math operators
+Variable Exp(const Variable& x) {
+    return FuncImpl<ExpSubst>()({x})[0];
 }
 
 }  // namespace F

@@ -6,13 +6,13 @@
 
 using namespace tinydiff;
 
-static void CheckNdArray(const Variable& v, const std::string& str,
+static void CheckNdArray(const NdArray& m, const std::string& str,
                          int precision = -1) {
     std::stringstream ss;
     if (0 < precision) {
         ss << std::setprecision(4);
     }
-    ss << v;
+    ss << m;
     CHECK(ss.str() == str);
 }
 
