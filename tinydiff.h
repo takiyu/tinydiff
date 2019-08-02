@@ -590,17 +590,17 @@ std::ostream& operator<<(std::ostream& os, const Variable& x);
 // Single
 Variable operator+(const Variable& x);
 Variable operator-(const Variable& x);
-// Arithmetic (NdArray, NdArray)
+// Arithmetic (Variable, Variable)
 Variable operator+(const Variable& lhs, const Variable& rhs);
 Variable operator-(const Variable& lhs, const Variable& rhs);
 Variable operator*(const Variable& lhs, const Variable& rhs);
 Variable operator/(const Variable& lhs, const Variable& rhs);
-// Arithmetic (NdArray, float)
+// Arithmetic (Variable, float)
 Variable operator+(const Variable& lhs, float rhs);
 Variable operator-(const Variable& lhs, float rhs);
 Variable operator*(const Variable& lhs, float rhs);
 Variable operator/(const Variable& lhs, float rhs);
-// Arithmetic (float, NdArray)
+// Arithmetic (float, Variable)
 Variable operator+(float lhs, const Variable& rhs);
 Variable operator-(float lhs, const Variable& rhs);
 Variable operator*(float lhs, const Variable& rhs);
@@ -649,17 +649,17 @@ namespace F {
 // Single
 Variable Pos(const Variable& x);
 Variable Neg(const Variable& x);
-// Arithmetic (NdArray, NdArray)
+// Arithmetic (Variable, Variable)
 Variable Add(const Variable& lhs, const Variable& rhs);
 Variable Sub(const Variable& lhs, const Variable& rhs);
 Variable Mul(const Variable& lhs, const Variable& rhs);
 Variable Div(const Variable& lhs, const Variable& rhs);
-// Arithmetic (NdArray, float)
+// Arithmetic (Variable, float)
 Variable Add(const Variable& lhs, float rhs);
 Variable Sub(const Variable& lhs, float rhs);
 Variable Mul(const Variable& lhs, float rhs);
 Variable Div(const Variable& lhs, float rhs);
-// Arithmetic (float, NdArray)
+// Arithmetic (float, Variable)
 Variable Add(float lhs, const Variable& rhs);
 Variable Sub(float lhs, const Variable& rhs);
 Variable Mul(float lhs, const Variable& rhs);
@@ -4404,11 +4404,11 @@ static Variables RetainVariables(const Variables& vs,
     // Copy switching shallow copy or lightweight copy
     Variables retained;
     for (size_t i = 0; i < vs.size(); i++) {
-        if (mask[i]) {
+//         if (mask[i]) {
             retained.push_back(vs[i]);
-        } else {
-            retained.push_back(vs[i].copyUnretained());
-        }
+//         } else {
+//             retained.push_back(vs[i].copyUnretained());
+//         }
     }
     return retained;
 }
@@ -4625,7 +4625,7 @@ Variable operator-(const Variable& x) {
     return F::Neg(x);
 }
 
-// Arithmetic (NdArray, NdArray)
+// Arithmetic (Variable, Variable)
 Variable operator+(const Variable& lhs, const Variable& rhs) {
     return F::Add(lhs, rhs);
 }
@@ -4642,7 +4642,7 @@ Variable operator/(const Variable& lhs, const Variable& rhs) {
     return F::Div(lhs, rhs);
 }
 
-// Arithmetic (NdArray, float)
+// Arithmetic (Variable, float)
 Variable operator+(const Variable& lhs, float rhs) {
     return F::Add(lhs, rhs);
 }
@@ -4659,7 +4659,7 @@ Variable operator/(const Variable& lhs, float rhs) {
     return F::Div(lhs, rhs);
 }
 
-// Arithmetic (float, NdArray)
+// Arithmetic (float, Variable)
 Variable operator+(float lhs, const Variable& rhs) {
     return F::Add(lhs, rhs);
 }
@@ -4753,7 +4753,10 @@ Variables Function::operator()(const Variables& x) {
 
     // Build chain
     for (auto&& y_elem : y) {
+        std::cout << "---" << std::endl;
+        std::cout << y_elem.getCreator().getRank() << std::endl;
         y_elem.setCreator(m_sub);
+        std::cout << y_elem.getCreator().getRank() << std::endl;
     }
 
     return std::move(y);
@@ -4805,16 +4808,16 @@ struct PosSubst : public Function::Substance {
     PosSubst() : Substance(1, 1, {}, {}) {}  // n_inp, n_out, retain_indices
     virtual ~PosSubst() {}
     virtual NdArrays forward(InNd x) override {
-        return {x[0]};
+        return {+x[0]};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         (void)x, (void)y;
-        return {gy[0]};
+        return {+gy[0]};
     }
 };
 
 struct NegSubst : public Function::Substance {
-    NegSubst() : Substance(1, 1, {}, {}) {}  // n_inp, n_out, retain_indices
+    NegSubst() : Substance(1, 1, {}, {}) {}
     virtual ~NegSubst() {}
     virtual NdArrays forward(InNd x) override {
         return {-x[0]};
@@ -4825,7 +4828,7 @@ struct NegSubst : public Function::Substance {
     }
 };
 
-// Arithmetic (NdArray, NdArray)
+// Arithmetic (Variable, Variable)
 struct AddSubst : public Function::Substance {
     AddSubst() : Substance(2, 1, {0, 1}, {}) {}
     virtual ~AddSubst() {}
@@ -4877,7 +4880,7 @@ struct DivSubst : public Function::Substance {
     }
 };
 
-// Arithmetic (NdArray, float)
+// Arithmetic (Variable, float)
 struct AddFloatSubst : public Function::Substance {
     AddFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
     virtual ~AddFloatSubst() {}
@@ -4931,7 +4934,7 @@ struct DivFloatSubst : public Function::Substance {
     const float c;
 };
 
-// Arithmetic (float, NdArray)
+// Arithmetic (float, Variable)
 struct SubFromFloatSubst : public Function::Substance {
     SubFromFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
     virtual ~SubFromFloatSubst() {}
@@ -4994,7 +4997,7 @@ Variable Neg(const Variable& x) {
     return FuncImpl<NegSubst>()({x})[0];
 }
 
-// Arithmetic (NdArray, NdArray)
+// Arithmetic (Variable, Variable)
 Variable Add(const Variable& lhs, const Variable& rhs) {
     return FuncImpl<AddSubst>()({lhs, rhs})[0];
 }
@@ -5011,7 +5014,7 @@ Variable Div(const Variable& lhs, const Variable& rhs) {
     return FuncImpl<DivSubst>()({lhs, rhs})[0];
 }
 
-// Arithmetic (NdArray, float)
+// Arithmetic (Variable, float)
 Variable Add(const Variable& lhs, float rhs) {
     return FuncImpl<AddFloatSubst>(rhs)({lhs})[0];
 }
@@ -5028,7 +5031,7 @@ Variable Div(const Variable& lhs, float rhs) {
     return FuncImpl<DivFloatSubst>(rhs)({lhs})[0];
 }
 
-// Arithmetic (float, NdArray)
+// Arithmetic (float, Variable)
 Variable Add(float lhs, const Variable& rhs) {
     return FuncImpl<AddFloatSubst>(lhs)({rhs})[0];
 }

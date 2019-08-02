@@ -74,7 +74,33 @@ TEST_CASE("AutoGrad") {
         CHECK(v1.ndim() == 1);
     }
 
-    // ------------------------- Arithmetic functions --------------------------
+    // -------------------------------- Single ---------------------------------
+    SECTION("Single") {
+        Variable v1 = {1.f, 2.f};
+        Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
+        // Positive
+        auto v_pos = +v2 + +v1;
+        v_pos.backward();
+        CheckGrad(v1, "[2, 2]");
+        CheckGrad(v2,
+                  "[[1, 1],\n"
+                  " [1, 1]]");
+        CheckData(v_pos,
+                  "[[4, 6],\n"
+                  " [6, 8]]");
+        // Negative
+        auto v_neg = -(-v1) + -(-(-v2));
+        v_neg.backward();
+        CheckGrad(v1, "[2, 2]");
+        CheckGrad(v2,
+                  "[[-1, -1],\n"
+                  " [-1, -1]]");
+        CheckData(v_neg,
+                  "[[-2, -2],\n"
+                  " [-4, -4]]");
+    }
+
+    // --------------- Arithmetic functions (Variable, Variable) ---------------
     SECTION("Arithmetic (add, broadcast)") {
         Variable v1 = {1.f, 2.f};
         Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
@@ -85,6 +111,9 @@ TEST_CASE("AutoGrad") {
         CheckGrad(v2,
                   "[[1, 1],\n"
                   " [1, 1]]");
+        CheckData(v12,
+                  "[[4, 6],\n"
+                  " [6, 8]]");
         // Backward From right to left
         auto v21 = v2 + v1;
         v21.backward();
@@ -92,6 +121,9 @@ TEST_CASE("AutoGrad") {
         CheckGrad(v2,
                   "[[1, 1],\n"
                   " [1, 1]]");
+        CheckData(v21,
+                  "[[4, 6],\n"
+                  " [6, 8]]");
         // Data check
         CheckData(v1, "[1, 2]");
         CheckData(v2,
@@ -109,6 +141,9 @@ TEST_CASE("AutoGrad") {
         CheckGrad(v2,
                   "[[-1, -1],\n"
                   " [-1, -1]]");
+        CheckData(v12,
+                  "[[-2, -2],\n"
+                  " [-4, -4]]");
         // Backward From right to left
         auto v21 = v2 - v1;
         v21.backward();
@@ -116,6 +151,9 @@ TEST_CASE("AutoGrad") {
         CheckGrad(v2,
                   "[[1, 1],\n"
                   " [1, 1]]");
+        CheckData(v21,
+                  "[[2, 2],\n"
+                  " [4, 4]]");
         // Data check
         CheckData(v1, "[1, 2]");
         CheckData(v2,
@@ -133,6 +171,9 @@ TEST_CASE("AutoGrad") {
         CheckGrad(v2,
                   "[[1, 2],\n"
                   " [1, 2]]");
+        CheckData(v12,
+                  "[[3, 8],\n"
+                  " [5, 12]]");
         // Backward From right to left
         auto v21 = v2 * v1;
         v21.backward();
@@ -140,6 +181,9 @@ TEST_CASE("AutoGrad") {
         CheckGrad(v2,
                   "[[1, 2],\n"
                   " [1, 2]]");
+        CheckData(v21,
+                  "[[3, 8],\n"
+                  " [5, 12]]");
         // Data check
         CheckData(v1, "[1, 2]");
         CheckData(v2,
@@ -157,6 +201,9 @@ TEST_CASE("AutoGrad") {
         CheckGrad(v2,
                   "[[-0.111111, -0.125],\n"
                   " [-0.04, -0.0555556]]");
+        CheckData(v12,
+                  "[[0.333333, 0.5],\n"
+                  " [0.2, 0.333333]]");
         // Backward From right to left
         auto v21 = v2 / v1;
         v21.backward();
@@ -164,11 +211,64 @@ TEST_CASE("AutoGrad") {
         CheckGrad(v2,
                   "[[1, 0.5],\n"
                   " [1, 0.5]]");
+        CheckData(v21,
+                  "[[3, 2],\n"
+                  " [5, 3]]");
         // Data check
         CheckData(v1, "[1, 2]");
         CheckData(v2,
                   "[[3, 4],\n"
                   " [5, 6]]");
+    }
+
+    // ---------------- Arithmetic functions (Variable, float) -----------------
+    SECTION("Arithmetic (Variable, float)") {
+        Variable v1 = {1.f, 2.f};
+        // Add
+        auto v_add = v1 + 2.f;
+        v_add.backward();
+        CheckGrad(v1, "[1, 1]");
+        CheckData(v_add, "[3, 4]");
+        // Sub
+        auto v_sub = v1 - 2.f;
+        v_sub.backward();
+        CheckGrad(v1, "[1, 1]");
+        CheckData(v_sub, "[-1, 0]");
+        // Mul
+        auto v_mul = v1 * 2.f;
+        v_mul.backward();
+        CheckGrad(v1, "[2, 2]");
+        CheckData(v_mul, "[2, 4]");
+        // Div
+        auto v_div = v1 / 2.f;
+        v_div.backward();
+        CheckGrad(v1, "[0.5, 0.5]");
+        CheckData(v_div, "[0.5, 1]");
+    }
+
+    // ---------------- Arithmetic functions (float, Variable) -----------------
+    SECTION("Arithmetic (float, Variable)") {
+        Variable v1 = {1.f, 2.f};
+        // Add
+        auto v_add = 2.f + v1;
+        v_add.backward();
+        CheckGrad(v1, "[1, 1]");
+        CheckData(v_add, "[3, 4]");
+        // Sub
+        auto v_sub = 2.f - v1;
+        v_sub.backward();
+        CheckGrad(v1, "[-1, -1]");
+        CheckData(v_sub, "[1, 0]");
+        // Mul
+        auto v_mul = 2.f * v1;
+        v_mul.backward();
+        CheckGrad(v1, "[2, 2]");
+        CheckData(v_mul, "[2, 4]");
+        // Div
+        auto v_div = 2.f / v1;
+        v_div.backward();
+        CheckGrad(v1, "[-2, -0.5]");
+        CheckData(v_div, "[2, 1]");
     }
 
     // -------------------- Arithmetic functions (complex) ---------------------
