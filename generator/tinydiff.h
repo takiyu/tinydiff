@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cmath>
 #include <exception>
+#include <functional>
 #include <iostream>
 #include <list>
 #include <map>
@@ -71,8 +72,11 @@ public:
     size_t ndim() const;
     Variable copyUnretained() const;
 
-    NdArray data() const;
-    NdArray grad() const;
+    NdArray& data();
+    const NdArray& data() const;
+    NdArray& grad();
+    const NdArray& grad() const;
+
     void backward(bool clear_grads = true);
 
     void setCreator(Function f);
@@ -180,11 +184,14 @@ Variable Multiply(float lhs, const Variable& rhs);
 Variable Divide(float lhs, const Variable& rhs);
 // Basic math operators
 Variable Abs(const Variable& x);
-Variable Ceil(const Variable& x);
-Variable Floor(const Variable& x);
+Variable Sign(const Variable& x);   // No backward
+Variable Ceil(const Variable& x);   // No backward
+Variable Floor(const Variable& x);  // No backward
+Variable Clip(const Variable& x, float x_min, float x_max);
 Variable Sqrt(const Variable& x);
 Variable Exp(const Variable& x);
 Variable Log(const Variable& x);
+Variable Square(const Variable& x);
 Variable Power(const Variable& x, const Variable& y);
 Variable Power(const Variable& x, float y);
 Variable Power(float x, const Variable& y);
@@ -487,11 +494,19 @@ Variable Variable::copyUnretained() const {
 }
 
 // ------------------------ Unique methods for Variable ------------------------
-NdArray Variable::data() const {
+NdArray& Variable::data() {
     return m_sub->data;
 }
 
-NdArray Variable::grad() const {
+const NdArray& Variable::data() const {
+    return m_sub->data;
+}
+
+NdArray& Variable::grad() {
+    return m_sub->grad;
+}
+
+const NdArray& Variable::grad() const {
     return m_sub->grad;
 }
 
@@ -670,7 +685,6 @@ Variable operator/=(Variable& lhs, float rhs) {
     return lhs = F::Divide(lhs, rhs);
 }
 
-
 // =============================================================================
 // ============================ Function Definition ============================
 // =============================================================================
@@ -797,7 +811,8 @@ namespace F {
 
 // Single
 struct PositiveSubst : public Function::Substance {
-    PositiveSubst() : Substance(1, 1, {}, {}) {}  // n_inp, n_out, retain_indices
+    PositiveSubst()
+        : Substance(1, 1, {}, {}) {}  // n_inp, n_out, retain_indices
     virtual ~PositiveSubst() {}
     virtual NdArrays forward(InNd x) override {
         return {+x[0]};
@@ -957,39 +972,30 @@ struct DivideFromFloatSubst : public Function::Substance {
 
 // Basic math operators
 struct AbsSubst : public Function::Substance {
-    AbsSubst() : Substance(1, 1, {}, {0}) {}
+    AbsSubst() : Substance(1, 1, {0}, {}) {}
     virtual ~AbsSubst() {}
     virtual NdArrays forward(InNd x) override {
         return {Abs(x[0])};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
-        (void)x;
-        return {gy[0] * y[0]};
+        (void)y;
+        return {Sign(x[0] * gy[0])};
     }
 };
 
-struct CeilSubst : public Function::Substance {
-    CeilSubst() : Substance(1, 1, {}, {0}) {}
-    virtual ~CeilSubst() {}
+struct ClipSubst : public Function::Substance {
+    ClipSubst(float x_min_, float x_max_)
+        : Substance(1, 1, {0}, {}), x_min(x_min_), x_max(x_max_) {}
+    virtual ~ClipSubst() {}
     virtual NdArrays forward(InNd x) override {
-        return {Ceil(x[0])};
+        return {Clip(x[0], x_min, x_max)};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
-        (void)x;
-        return {gy[0] * y[0]};
+        (void)y;
+        NdArray cond = (x_min <= x[0]) * (x[0] <= x_max);
+        return {std::move(cond) * gy[0]};
     }
-};
-
-struct FloorSubst : public Function::Substance {
-    FloorSubst() : Substance(1, 1, {}, {0}) {}
-    virtual ~FloorSubst() {}
-    virtual NdArrays forward(InNd x) override {
-        return {Floor(x[0])};
-    }
-    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
-        (void)x;
-        return {gy[0] * y[0]};
-    }
+    float x_min, x_max;
 };
 
 struct SqrtSubst : public Function::Substance {
@@ -1000,7 +1006,7 @@ struct SqrtSubst : public Function::Substance {
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         (void)x;
-        return {gy[0] * y[0]};
+        return {gy[0] / (y[0] * 2.f)};
     }
 };
 
@@ -1017,28 +1023,38 @@ struct ExpSubst : public Function::Substance {
 };
 
 struct LogSubst : public Function::Substance {
-    LogSubst() : Substance(1, 1, {}, {0}) {}
+    LogSubst() : Substance(1, 1, {0}, {}) {}
     virtual ~LogSubst() {}
     virtual NdArrays forward(InNd x) override {
         return {Log(x[0])};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
-        (void)x;
-        return {gy[0] * y[0]};
+        (void)y;
+        return {gy[0] / x[0]};
+    }
+};
+
+struct SquareSubst : public Function::Substance {
+    SquareSubst() : Substance(1, 1, {0}, {}) {}
+    virtual ~SquareSubst() {}
+    virtual NdArrays forward(InNd x) override {
+        return {Square(x[0])};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)y;
+        return {gy[0] * 2.f * x[0]};
     }
 };
 
 struct PowerSubst : public Function::Substance {
-    PowerSubst() : Substance(2, 1, {0, 1}, {}) {}
+    PowerSubst() : Substance(2, 1, {0, 1}, {0}) {}
     virtual ~PowerSubst() {}
     virtual NdArrays forward(InNd x) override {
         return {Power(x[0], x[1])};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
-        (void)y;
-        const auto& gx0 = gy[0] / x[1];
-        const auto& gx1 = -gx0 * x[0] / x[1];
-        return {SumTo(gx0, x[0].shape()), SumTo(gx1, x[1].shape())};
+        return {SumTo(x[1] * Power(x[0], x[1] - 1.f) * gy[0], x[0].shape()),
+                SumTo(Log(x[0]) * y[0] * gy[0], x[1].shape())};
     }
 };
 
@@ -1050,58 +1066,57 @@ struct PowerFloatSubst : public Function::Substance {
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         (void)y;
-        return {SumTo(gy[0], x[0].shape())};
+        return {SumTo(c * Power(x[0], c - 1.f) * gy[0], x[0].shape())};
     }
     const float c;
 };
 
 struct PowerFromFloatSubst : public Function::Substance {
-    PowerFromFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
+    PowerFromFloatSubst(float c_) : Substance(1, 1, {0}, {0}), c(c_) {}
     virtual ~PowerFromFloatSubst() {}
     virtual NdArrays forward(InNd x) override {
         return {Power(c, x[0])};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
-        (void)y;
-        return {SumTo(-gy[0], x[0].shape())};
+        return {SumTo(std::log(c) * y[0] * gy[0], x[0].shape())};
     }
     const float c;
 };
 
 // Trigonometric functions
 struct SinSubst : public Function::Substance {
-    SinSubst() : Substance(1, 1, {}, {0}) {}
+    SinSubst() : Substance(1, 1, {0}, {}) {}
     virtual ~SinSubst() {}
     virtual NdArrays forward(InNd x) override {
         return {Sin(x[0])};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
-        (void)x;
-        return {gy[0] * y[0]};
+        (void)y;
+        return {gy[0] * Cos(x[0])};
     }
 };
 
 struct CosSubst : public Function::Substance {
-    CosSubst() : Substance(1, 1, {}, {0}) {}
+    CosSubst() : Substance(1, 1, {0}, {}) {}
     virtual ~CosSubst() {}
     virtual NdArrays forward(InNd x) override {
         return {Cos(x[0])};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
-        (void)x;
-        return {gy[0] * y[0]};
+        (void)y;
+        return {gy[0] * -Sin(x[0])};
     }
 };
 
 struct TanSubst : public Function::Substance {
-    TanSubst() : Substance(1, 1, {}, {0}) {}
+    TanSubst() : Substance(1, 1, {0}, {}) {}
     virtual ~TanSubst() {}
     virtual NdArrays forward(InNd x) override {
         return {Tan(x[0])};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
-        (void)x;
-        return {gy[0] * y[0]};
+        (void)y;
+        return {gy[0] / Square(Cos(x[0]))};
     }
 };
 
@@ -1259,12 +1274,20 @@ Variable Abs(const Variable& x) {
     return FuncImpl<AbsSubst>()({x})[0];
 }
 
+Variable Sign(const Variable& x) {
+    return Variable(Sign(x.data()));  // Forward only. (unchain)
+}
+
 Variable Ceil(const Variable& x) {
-    return FuncImpl<CeilSubst>()({x})[0];
+    return Variable(Ceil(x.data()));  // Forward only. (unchain)
 }
 
 Variable Floor(const Variable& x) {
-    return FuncImpl<FloorSubst>()({x})[0];
+    return Variable(Floor(x.data()));  // Forward only. (unchain)
+}
+
+Variable Clip(const Variable& x, float x_min, float x_max) {
+    return FuncImpl<ClipSubst>(x_min, x_max)({x})[0];
 }
 
 Variable Sqrt(const Variable& x) {
@@ -1277,6 +1300,10 @@ Variable Exp(const Variable& x) {
 
 Variable Log(const Variable& x) {
     return FuncImpl<LogSubst>()({x})[0];
+}
+
+Variable Square(const Variable& x) {
+    return FuncImpl<SquareSubst>()({x})[0];
 }
 
 Variable Power(const Variable& x, const Variable& y) {

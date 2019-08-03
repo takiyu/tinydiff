@@ -26,6 +26,17 @@ static void CheckGrad(const Variable& v, const std::string& str,
     CheckNdArray(v.grad(), str, precision);
 }
 
+static void ResolveAmbiguous(NdArray& x) {
+    for (auto&& v : x) {
+        if (std::isnan(v)) {
+            v = std::abs(v);
+        }
+        if (v == -0.f) {
+            v = 0.f;
+        }
+    }
+}
+
 TEST_CASE("AutoGrad") {
     // -------------------------- Basic construction ---------------------------
     SECTION("Basic construction") {
@@ -104,7 +115,7 @@ TEST_CASE("AutoGrad") {
     SECTION("Arithmetic (add, broadcast)") {
         Variable v1 = {1.f, 2.f};
         Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
-        // Backward From left to right
+        // Backward from left to right
         auto v12 = v1 + v2;
         v12.backward();
         CheckGrad(v1, "[2, 2]");
@@ -114,7 +125,7 @@ TEST_CASE("AutoGrad") {
         CheckData(v12,
                   "[[4, 6],\n"
                   " [6, 8]]");
-        // Backward From right to left
+        // Backward from right to left
         auto v21 = v2 + v1;
         v21.backward();
         CheckGrad(v1, "[2, 2]");
@@ -134,7 +145,7 @@ TEST_CASE("AutoGrad") {
     SECTION("Arithmetic (sub, broadcast)") {
         Variable v1 = {1.f, 2.f};
         Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
-        // Backward From left to right
+        // Backward from left to right
         auto v12 = v1 - v2;
         v12.backward();
         CheckGrad(v1, "[2, 2]");
@@ -144,7 +155,7 @@ TEST_CASE("AutoGrad") {
         CheckData(v12,
                   "[[-2, -2],\n"
                   " [-4, -4]]");
-        // Backward From right to left
+        // Backward from right to left
         auto v21 = v2 - v1;
         v21.backward();
         CheckGrad(v1, "[-2, -2]");
@@ -164,7 +175,7 @@ TEST_CASE("AutoGrad") {
     SECTION("Arithmetic (mul, broadcast)") {
         Variable v1 = {1.f, 2.f};
         Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
-        // Backward From left to right
+        // Backward from left to right
         auto v12 = v1 * v2;
         v12.backward();
         CheckGrad(v1, "[8, 10]");
@@ -174,7 +185,7 @@ TEST_CASE("AutoGrad") {
         CheckData(v12,
                   "[[3, 8],\n"
                   " [5, 12]]");
-        // Backward From right to left
+        // Backward from right to left
         auto v21 = v2 * v1;
         v21.backward();
         CheckGrad(v1, "[8, 10]");
@@ -194,7 +205,7 @@ TEST_CASE("AutoGrad") {
     SECTION("Arithmetic (div, broadcast)") {
         Variable v1 = {1.f, 2.f};
         Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
-        // Backward From left to right
+        // Backward from left to right
         auto v12 = v1 / v2;
         v12.backward();
         CheckGrad(v1, "[0.533333, 0.416667]");
@@ -204,7 +215,7 @@ TEST_CASE("AutoGrad") {
         CheckData(v12,
                   "[[0.333333, 0.5],\n"
                   " [0.2, 0.333333]]");
-        // Backward From right to left
+        // Backward from right to left
         auto v21 = v2 / v1;
         v21.backward();
         CheckGrad(v1, "[-8, -2.5]");
@@ -299,6 +310,182 @@ TEST_CASE("AutoGrad") {
         CheckGrad(v1, "[0.5, 0.5]");
         CheckData(v_div, "[0.5, 1]");
     }
+
+    // -------------------------- Basic math operators -------------------------
+    SECTION("Basic math operators") {
+        Variable v1 = {-1.f, 0.f, 1.f, 2.f};
+        // Abs
+        auto v_abs = F::Abs(v1);
+        v_abs.backward();
+        CheckGrad(v1, "[-1, 0, 1, 1]");
+        CheckData(v_abs, "[1, 0, 1, 2]");
+        // Sign, Ceil, Floor cannot backward. Tested in the 2 next case.
+        // Clip
+        auto v_clip = F::Clip(v1, -0.5f, 1.9f) * 2.1f;
+        v_clip.backward();
+        CheckGrad(v1, "[0, 2.1, 2.1, 0]");
+        CheckData(v_clip, "[-1.05, 0, 2.1, 3.99]");
+        // Sqrt
+        auto v_sqrt = F::Sqrt(v1);
+        v_sqrt.backward();
+        ResolveAmbiguous(v1.grad());  // -nan -> nan
+        ResolveAmbiguous(v_sqrt.data());  // -nan -> nan
+        CheckGrad(v1, "[nan, inf, 0.5, 0.353553]");
+        CheckData(v_sqrt, "[nan, 0, 1, 1.41421]");
+        // Exp
+        auto v_exp = F::Exp(v1);
+        v_exp.backward();
+        CheckGrad(v1, "[0.367879, 1, 2.71828, 7.38906]");
+        CheckData(v_exp, "[0.367879, 1, 2.71828, 7.38906]");
+        // Log
+        auto v_log = F::Log(v1);
+        v_log.backward();
+        ResolveAmbiguous(v_log.data());  // -nan -> nan
+        CheckGrad(v1, "[-1, inf, 1, 0.5]");
+        CheckData(v_log, "[nan, -inf, 0, 0.693147]");
+        // Square
+        auto v_square = F::Square(v1);
+        v_square.backward();
+        CheckGrad(v1, "[-2, 0, 2, 4]");
+        CheckData(v_square, "[1, 0, 1, 4]");
+        // Power is tested in the next case.
+    }
+
+    SECTION("Basic math operators (power)") {
+        // Power
+        Variable v1 = {1.5f, 2.f};
+        Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
+        // Backward from left to right
+        auto v12 = F::Power(v1, v2);
+        v12.backward();
+        CheckGrad(v1, "[32.0625, 224]");
+        CheckGrad(v2,
+                  "[[1.36844, 11.0904],\n"
+                  " [3.079, 44.3614]]");
+        CheckData(v12,
+                  "[[3.375, 16],\n"
+                  " [7.59375, 64]]");
+        // Backward from right to left
+        auto v21 = F::Power(v2, v1);
+        v21.backward();
+        CheckGrad(v1, "[23.7026, 86.6841]");
+        CheckGrad(v2,
+                  "[[2.59808, 8],\n"
+                  " [3.3541, 12]]");
+        CheckData(v21,
+                  "[[5.19615, 16],\n"
+                  " [11.1803, 36]]");
+        // Float
+        auto v_float = F::Power(v1, 2.1f);
+        v_float.backward();
+        CheckGrad(v1, "[3.28035, 4.50145]");
+        CheckData(v_float, "[2.3431, 4.28709]");
+        // From float
+        auto v_from_float = F::Power(2.1f, v1);
+        v_from_float.backward();
+        CheckGrad(v1, "[2.25786, 3.27194]");
+        CheckData(v_from_float, "[3.04319, 4.41]");
+    }
+
+    SECTION("Basic math operators (unchained functions)") {
+        Variable v1 = {-1.f, 0.f, 1.f, 2.f};
+        // Sign
+        v1.clearGrad();
+        auto v_sign = F::Sign(v1);  // Unchain
+        v_sign.backward();
+        CheckGrad(v1, "[]");  // No grad
+        CheckData(v_sign, "[-1, 0, 1, 1]");
+        // Ceil
+        v1.clearGrad();
+        auto v_ceil = F::Ceil(v1 + 0.5);  // Unchain
+        v_ceil.backward();
+        CheckGrad(v1, "[]");  // No grad
+        CheckData(v_ceil, "[-0, 1, 2, 3]");
+        // Floor
+        v1.clearGrad();
+        auto v_floor = F::Floor(v1 + 0.5);  // Unchain
+        v_floor.backward();
+        CheckGrad(v1, "[]");  // No grad
+        CheckData(v_floor, "[-1, 0, 1, 2]");
+    }
+
+    // ------------------------ Trigonometric functions ------------------------
+    SECTION("Trigonometric functions") {
+        Variable v1 = {-1.f, 0.f, 1.f, 2.f};
+        // Sin
+        auto v_sin = F::Sin(v1);
+        v_sin.backward();
+        CheckGrad(v1, "[0.540302, 1, 0.540302, -0.416147]");
+        CheckData(v_sin, "[-0.841471, 0, 0.841471, 0.909297]");
+        // Cos
+        auto v_cos = F::Cos(v1);
+        v_cos.backward();
+        ResolveAmbiguous(v1.grad());  // -0 -> 0
+        CheckGrad(v1, "[0.841471, 0, -0.841471, -0.909297]");
+        CheckData(v_cos, "[0.540302, 1, 0.540302, -0.416147]");
+        // Tan
+        auto v_tan = F::Tan(v1);
+        v_tan.backward();
+        CheckGrad(v1, "[3.42552, 1, 3.42552, 5.7744]");
+        CheckData(v_tan, "[-1.55741, 0, 1.55741, -2.18504]");
+    }
+
+    // ------------------------ Inverse trigonometric functions ------------------------
+    SECTION("Inverse trigonometric functions") {
+        Variable v1 = {-1.f, 0.f, 0.5, 1.f, 2.f};
+        // ArcSin
+        auto v_arcsin = F::ArcSin(v1);
+        v_arcsin.backward();
+        CheckGrad(v1, "[inf, 1, 1.1547, inf, nan]");
+        CheckData(v_arcsin, "[-1.5708, 0, 0.523599, 1.5708, nan]");
+        // ArcCos
+        auto v_arccos = F::ArcCos(v1);
+        v_arccos.backward();
+        CheckGrad(v1, "[-inf, -1, -1.1547, -inf, nan]");
+        CheckData(v_arccos, "[3.14159, 1.5708, 1.0472, 0, nan]");
+        // ArcTan
+        auto v_arctan = F::ArcTan(v1);
+        v_arctan.backward();
+        CheckGrad(v1, "[0.5, 1, 0.8, 0.5, 0.2]");
+        CheckData(v_arctan, "[-0.785398, 0, 0.463648, 0.785398, 1.10715]");
+        // ArcTan2 is tested in the next case.
+    }
+
+//     SECTION("Inverse trigonometric functions (atan2)") {
+//         // ArcTan2
+//         Variable v1 = {1.5f, 2.f};
+//         Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
+//         // Backward from left to right
+//         auto v12 = F::ArcTan2(v1, v2);
+//         v12.backward();
+//         CheckGrad(v1, "[32.0625, 224]");
+//         CheckGrad(v2,
+//                   "[[1.36844, 11.0904],\n"
+//                   " [3.079, 44.3614]]");
+//         CheckData(v12,
+//                   "[[3.375, 16],\n"
+//                   " [7.59375, 64]]");
+//         // Backward from right to left
+//         auto v21 = F::ArcTan2(v2, v1);
+//         v21.backward();
+//         CheckGrad(v1, "[23.7026, 86.6841]");
+//         CheckGrad(v2,
+//                   "[[2.59808, 8],\n"
+//                   " [3.3541, 12]]");
+//         CheckData(v21,
+//                   "[[5.19615, 16],\n"
+//                   " [11.1803, 36]]");
+//         // Float
+//         auto v_float = F::ArcTan2(v1, 2.1f);
+//         v_float.backward();
+//         CheckGrad(v1, "[3.28035, 4.50145]");
+//         CheckData(v_float, "[2.3431, 4.28709]");
+//         // From float
+//         auto v_from_float = F::ArcTan2(2.1f, v1);
+//         v_from_float.backward();
+//         CheckGrad(v1, "[2.25786, 3.27194]");
+//         CheckData(v_from_float, "[3.04319, 4.41]");
+//     }
 
     // -------------------- Arithmetic functions (complex) ---------------------
     SECTION("Arithmetic (complex chain)") {
