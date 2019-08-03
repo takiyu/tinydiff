@@ -605,6 +605,16 @@ Variable operator+(float lhs, const Variable& rhs);
 Variable operator-(float lhs, const Variable& rhs);
 Variable operator*(float lhs, const Variable& rhs);
 Variable operator/(float lhs, const Variable& rhs);
+// Compound Assignment (Variable, Variable)
+Variable operator+=(Variable& lhs, const Variable& rhs);
+Variable operator-=(Variable& lhs, const Variable& rhs);
+Variable operator*=(Variable& lhs, const Variable& rhs);
+Variable operator/=(Variable& lhs, const Variable& rhs);
+// Compound Assignment (Variable, float)
+Variable operator+=(Variable& lhs, float rhs);
+Variable operator-=(Variable& lhs, float rhs);
+Variable operator*=(Variable& lhs, float rhs);
+Variable operator/=(Variable& lhs, float rhs);
 
 // =============================================================================
 // ================================== Function =================================
@@ -4678,6 +4688,41 @@ Variable operator*(float lhs, const Variable& rhs) {
 Variable operator/(float lhs, const Variable& rhs) {
     return F::Div(lhs, rhs);
 }
+
+// Compound Assignment (Variable, Variable)
+Variable operator+=(Variable& lhs, const Variable& rhs) {
+    return lhs = F::Add(lhs, rhs);
+}
+
+Variable operator-=(Variable& lhs, const Variable& rhs) {
+    return lhs = F::Sub(lhs, rhs);
+}
+
+Variable operator*=(Variable& lhs, const Variable& rhs) {
+    return lhs = F::Mul(lhs, rhs);
+}
+
+Variable operator/=(Variable& lhs, const Variable& rhs) {
+    return lhs = F::Div(lhs, rhs);
+}
+
+// Compound Assignment (Variable, float)
+Variable operator+=(Variable& lhs, float rhs) {
+    return lhs = F::Add(lhs, rhs);
+}
+
+Variable operator-=(Variable& lhs, float rhs) {
+    return lhs = F::Sub(lhs, rhs);
+}
+
+Variable operator*=(Variable& lhs, float rhs) {
+    return lhs = F::Mul(lhs, rhs);
+}
+
+Variable operator/=(Variable& lhs, float rhs) {
+    return lhs = F::Div(lhs, rhs);
+}
+
 
 // =============================================================================
 // ============================ Function Definition ============================

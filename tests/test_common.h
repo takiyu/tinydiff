@@ -271,15 +271,44 @@ TEST_CASE("AutoGrad") {
         CheckData(v_div, "[2, 1]");
     }
 
+    // -------------------------- Compound Assignment --------------------------
+    SECTION("Compound assignment") {
+        Variable v1 = {1.f, 2.f};
+        // Add
+        auto v_add = v1;
+        v_add += 2.f;
+        v_add.backward();
+        CheckGrad(v1, "[1, 1]");
+        CheckData(v_add, "[3, 4]");
+        // Sub
+        auto v_sub = v1;
+        v_sub -= 2.f;
+        v_sub.backward();
+        CheckGrad(v1, "[1, 1]");
+        CheckData(v_sub, "[-1, 0]");
+        // Mul
+        auto v_mul = v1;
+        v_mul *= 2.f;
+        v_mul.backward();
+        CheckGrad(v1, "[2, 2]");
+        CheckData(v_mul, "[2, 4]");
+        // Div
+        auto v_div = v1;
+        v_div /= 2.f;
+        v_div.backward();
+        CheckGrad(v1, "[0.5, 0.5]");
+        CheckData(v_div, "[0.5, 1]");
+    }
+
     // -------------------- Arithmetic functions (complex) ---------------------
     SECTION("Arithmetic (complex chain)") {
         Variable v1 = {1.f, 2.f};
         Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
 
-        auto v3 = v1 + v2;
+        auto v3 = v1 + +v2;
         auto v4 = v3 * v2;
         auto v5 = v4 / v1;
-        auto v6 = v5 - v3;
+        auto v6 = v5 - -(-v3);
         v6.backward();
 
         CheckGrad(v1, "[-36, -15]");
