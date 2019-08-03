@@ -35,12 +35,14 @@ if __name__ == '__main__':
         diff_code = replace_code(diff_code,
                                  '\n' +
                                  '// Declaration of NdArray\n' +
+                                 '#undef TINYNDARRAY_H_ONCE\n' +
                                  '#define TINYNDARRAY_NO_NAMESPACE\n' +
                                  '#include "./tinyndarray/tinyndarray.h"\n',
                                  decl_code)
         diff_code = replace_code(diff_code,
                                  '\n' +
                                  '// Definitions of NdArray\n' +
+                                 '#undef TINYNDARRAY_H_ONCE\n' +
                                  '#define TINYNDARRAY_NO_NAMESPACE\n' +
                                  '#define TINYNDARRAY_NO_DECLARATION\n' +
                                  '#define TINYNDARRAY_IMPLEMENTATION\n' +

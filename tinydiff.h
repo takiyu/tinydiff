@@ -4404,11 +4404,11 @@ static Variables RetainVariables(const Variables& vs,
     // Copy switching shallow copy or lightweight copy
     Variables retained;
     for (size_t i = 0; i < vs.size(); i++) {
-//         if (mask[i]) {
+        if (mask[i]) {
             retained.push_back(vs[i]);
-//         } else {
-//             retained.push_back(vs[i].copyUnretained());
-//         }
+        } else {
+            retained.push_back(vs[i].copyUnretained());
+        }
     }
     return retained;
 }
@@ -4744,19 +4744,16 @@ Variables Function::operator()(const Variables& x) {
     // Retain input/output variables
     m_sub->inputs = RetainVariables(x, m_sub->retain_inp_idxs);
     m_sub->outputs = RetainVariables(y, m_sub->retain_out_idxs);
-    // Set rank of this function
+    // Set rank of this function (maximum one)
     m_sub->rank = 0;
     for (auto&& x_elem : x) {
-        size_t rank = x_elem.getCreator().getRank();
-        m_sub->rank = std::max(m_sub->rank, rank);
+        const size_t rank_cand = x_elem.getCreator().getRank();
+        m_sub->rank = std::max(m_sub->rank, rank_cand);
     }
 
     // Build chain
     for (auto&& y_elem : y) {
-        std::cout << "---" << std::endl;
-        std::cout << y_elem.getCreator().getRank() << std::endl;
         y_elem.setCreator(m_sub);
-        std::cout << y_elem.getCreator().getRank() << std::endl;
     }
 
     return std::move(y);

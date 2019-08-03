@@ -35,6 +35,7 @@ using Variables = std::vector<Variable>;
 class Function;
 
 // Declaration of NdArray
+#undef TINYNDARRAY_H_ONCE
 #define TINYNDARRAY_NO_NAMESPACE
 #include "./tinyndarray/tinyndarray.h"
 
@@ -183,6 +184,7 @@ Variable Exp(const Variable& x);
 #ifdef TINYDIFF_IMPLEMENTATION
 
 // Definitions of NdArray
+#undef TINYNDARRAY_H_ONCE
 #define TINYNDARRAY_NO_NAMESPACE
 #define TINYNDARRAY_NO_DECLARATION
 #define TINYNDARRAY_IMPLEMENTATION
@@ -670,11 +672,11 @@ Variables Function::operator()(const Variables& x) {
     // Retain input/output variables
     m_sub->inputs = RetainVariables(x, m_sub->retain_inp_idxs);
     m_sub->outputs = RetainVariables(y, m_sub->retain_out_idxs);
-    // Set rank of this function
+    // Set rank of this function (maximum one)
     m_sub->rank = 0;
     for (auto&& x_elem : x) {
-        size_t rank = x_elem.getCreator().getRank();
-        m_sub->rank = std::max(m_sub->rank, rank);
+        const size_t rank_cand = x_elem.getCreator().getRank();
+        m_sub->rank = std::max(m_sub->rank, rank_cand);
     }
 
     // Build chain
