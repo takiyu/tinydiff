@@ -4282,7 +4282,7 @@ void CheckVecSize(const std::vector<T>& x0, const size_t n0,
 }
 
 template <typename K, typename V>
-V PopLast(std::map<K, V>& m) {
+V PopLast(std::multimap<K, V>& m) {
     auto&& last_itr = std::prev(m.end());
     V last = last_itr->second;
     m.erase(last_itr);
@@ -4366,14 +4366,17 @@ std::vector<Function> ResolveChain(const Function& start_func) {
     std::vector<Function> ret_funcs;
 
     // Pool
-    std::map<size_t, Function> m_cand_funcs;
+    std::multimap<size_t, Function> m_cand_funcs;
     // Set the last function
-    m_cand_funcs[start_func.getRank()] = start_func;
+    m_cand_funcs.emplace(start_func.getRank(), start_func);
 
     // Resolving loop
     while (!m_cand_funcs.empty()) {
-        // Get highest rank function
+        // Get one of highest rank function
         Function last_func = PopLast(m_cand_funcs);
+        if (last_func.getRank() == 0) {
+            continue;  // Already resolved
+        }
         ret_funcs.push_back(last_func);
 
         // Track chain
@@ -4382,7 +4385,7 @@ std::vector<Function> ResolveChain(const Function& start_func) {
             auto&& func = inputs[i].getCreator();
             // When rank is zero, it is already resolved.
             if (0 < func.getRank()) {
-                m_cand_funcs[func.getRank()] = func;
+                m_cand_funcs.emplace(func.getRank(), func);
             }
         }
 
