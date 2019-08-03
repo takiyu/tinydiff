@@ -1122,38 +1122,38 @@ struct TanSubst : public Function::Substance {
 
 // Inverse trigonometric functions
 struct ArcSinSubst : public Function::Substance {
-    ArcSinSubst() : Substance(1, 1, {}, {0}) {}
+    ArcSinSubst() : Substance(1, 1, {0}, {}) {}
     virtual ~ArcSinSubst() {}
     virtual NdArrays forward(InNd x) override {
         return {ArcSin(x[0])};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
-        (void)x;
-        return {gy[0] * y[0]};
+        (void)y;
+        return {gy[0] / Sqrt(1.f - Square(x[0]))};
     }
 };
 
 struct ArcCosSubst : public Function::Substance {
-    ArcCosSubst() : Substance(1, 1, {}, {0}) {}
+    ArcCosSubst() : Substance(1, 1, {0}, {}) {}
     virtual ~ArcCosSubst() {}
     virtual NdArrays forward(InNd x) override {
         return {ArcCos(x[0])};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
-        (void)x;
-        return {gy[0] * y[0]};
+        (void)y;
+        return {gy[0] / -Sqrt(1.f - Square(x[0]))};
     }
 };
 
 struct ArcTanSubst : public Function::Substance {
-    ArcTanSubst() : Substance(1, 1, {}, {0}) {}
+    ArcTanSubst() : Substance(1, 1, {0}, {}) {}
     virtual ~ArcTanSubst() {}
     virtual NdArrays forward(InNd x) override {
         return {ArcTan(x[0])};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
-        (void)x;
-        return {gy[0] * y[0]};
+        (void)y;
+        return {gy[0] / (1.f + Square(x[0]))};
     }
 };
 
@@ -1165,8 +1165,9 @@ struct ArcTan2Subst : public Function::Substance {
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         (void)y;
-        const auto& gx0 = gy[0] / x[1];
-        const auto& gx1 = -gx0 * x[0] / x[1];
+        NdArray sqnorm = Square(x[0]) + Square(x[1]);
+        const NdArray gx0 = x[1] / sqnorm * gy[0];
+        const NdArray gx1 = -x[0] / std::move(sqnorm) * gy[0];
         return {SumTo(gx0, x[0].shape()), SumTo(gx1, x[1].shape())};
     }
 };
@@ -1179,7 +1180,7 @@ struct ArcTan2FloatSubst : public Function::Substance {
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         (void)y;
-        return {SumTo(gy[0], x[0].shape())};
+        return {c * gy[0] / (Square(x[0]) + (c * c))};
     }
     const float c;
 };
@@ -1192,7 +1193,7 @@ struct ArcTan2FromFloatSubst : public Function::Substance {
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         (void)y;
-        return {SumTo(-gy[0], x[0].shape())};
+        return {-c * gy[0] / ((c * c) + Square(x[0]))};
     }
     const float c;
 };

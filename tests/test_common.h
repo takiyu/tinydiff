@@ -436,11 +436,13 @@ TEST_CASE("AutoGrad") {
         // ArcSin
         auto v_arcsin = F::ArcSin(v1);
         v_arcsin.backward();
+        ResolveAmbiguous(v1.grad());  // -nan -> nan
         CheckGrad(v1, "[inf, 1, 1.1547, inf, nan]");
         CheckData(v_arcsin, "[-1.5708, 0, 0.523599, 1.5708, nan]");
         // ArcCos
         auto v_arccos = F::ArcCos(v1);
         v_arccos.backward();
+        ResolveAmbiguous(v1.grad());  // -nan -> nan
         CheckGrad(v1, "[-inf, -1, -1.1547, -inf, nan]");
         CheckData(v_arccos, "[3.14159, 1.5708, 1.0472, 0, nan]");
         // ArcTan
@@ -451,41 +453,41 @@ TEST_CASE("AutoGrad") {
         // ArcTan2 is tested in the next case.
     }
 
-//     SECTION("Inverse trigonometric functions (atan2)") {
-//         // ArcTan2
-//         Variable v1 = {1.5f, 2.f};
-//         Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
-//         // Backward from left to right
-//         auto v12 = F::ArcTan2(v1, v2);
-//         v12.backward();
-//         CheckGrad(v1, "[32.0625, 224]");
-//         CheckGrad(v2,
-//                   "[[1.36844, 11.0904],\n"
-//                   " [3.079, 44.3614]]");
-//         CheckData(v12,
-//                   "[[3.375, 16],\n"
-//                   " [7.59375, 64]]");
-//         // Backward from right to left
-//         auto v21 = F::ArcTan2(v2, v1);
-//         v21.backward();
-//         CheckGrad(v1, "[23.7026, 86.6841]");
-//         CheckGrad(v2,
-//                   "[[2.59808, 8],\n"
-//                   " [3.3541, 12]]");
-//         CheckData(v21,
-//                   "[[5.19615, 16],\n"
-//                   " [11.1803, 36]]");
-//         // Float
-//         auto v_float = F::ArcTan2(v1, 2.1f);
-//         v_float.backward();
-//         CheckGrad(v1, "[3.28035, 4.50145]");
-//         CheckData(v_float, "[2.3431, 4.28709]");
-//         // From float
-//         auto v_from_float = F::ArcTan2(2.1f, v1);
-//         v_from_float.backward();
-//         CheckGrad(v1, "[2.25786, 3.27194]");
-//         CheckData(v_from_float, "[3.04319, 4.41]");
-//     }
+    SECTION("Inverse trigonometric functions (atan2)") {
+        // ArcTan2
+        Variable v1 = {1.5f, 2.f};
+        Variable v2 = {{-1.f, 0.f}, {1.f, 2.f}};
+        // Backward from left to right
+        auto v12 = F::ArcTan2(v1, v2);
+        v12.backward();
+        CheckGrad(v1, "[0, 0.25]");
+        CheckGrad(v2,
+                  "[[-0.461538, -0.5],\n"
+                  " [-0.461538, -0.25]]");
+        CheckData(v12,
+                  "[[2.1588, 1.5708],\n"
+                  " [0.982794, 0.785398]]");
+        // Backward from right to left
+        auto v21 = F::ArcTan2(v2, v1);
+        v21.backward();
+        CheckGrad(v1, "[0, -0.25]");
+        CheckGrad(v2,
+                  "[[0.461538, 0.5],\n"
+                  " [0.461538, 0.25]]");
+        CheckData(v21,
+                  "[[-0.588003, 0],\n"
+                  " [0.588003, 0.785398]]");
+        // Float
+        auto v_float = F::ArcTan2(v1, 2.1f);
+        v_float.backward();
+        CheckGrad(v1, "[0.315315, 0.249703]");
+        CheckData(v_float, "[0.62025, 0.761013]");
+        // From float
+        auto v_from_float = F::ArcTan2(2.1f, v1);
+        v_from_float.backward();
+        CheckGrad(v1, "[-0.315315, -0.249703]");
+        CheckData(v_from_float, "[0.950547, 0.809784]");
+    }
 
     // -------------------- Arithmetic functions (complex) ---------------------
     SECTION("Arithmetic (complex chain)") {
