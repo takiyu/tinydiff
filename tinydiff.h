@@ -42,6 +42,8 @@ using Shape = std::vector<int>;
 using Index = std::vector<int>;
 using SliceIndex = std::vector<std::pair<int, int>>;
 using Axis = std::vector<int>;
+template <bool C>
+using Float = std::conditional_t<C, const float, float>;
 
 // =============================================================================
 // ======================= Nested Float Initializer List =======================
@@ -64,8 +66,10 @@ using FloatList = typename FloatListHelper<D>::type;
 // =============================================================================
 class NdArray {
 public:
-    class Iter;
-    class ConstIter;
+    template <bool C>
+    class IterBase;
+    using Iter = IterBase<false>;
+    using ConstIter = IterBase<true>;
 
     NdArray();
     NdArray(const NdArray&);
@@ -159,7 +163,6 @@ public:
     NdArray slice(std::initializer_list<I>... slice_index) const;  // {i, j}...
 
     NdArray dot(const NdArray& other) const;
-    NdArray dot(float other) const;
     NdArray cross(const NdArray& other) const;
 
     NdArray sum(const Axis& axes = {}, bool keepdims = false) const;
@@ -183,51 +186,6 @@ private:
 
     static int s_n_workers;
     static int s_batch_scale;
-};
-
-// --------------------------------- Iterator ----------------------------------
-class NdArray::Iter {
-public:
-    Iter(float* p_);
-    float& operator*();
-    float& operator*() const;
-    float& operator[](int i);
-    float& operator[](int i) const;
-    Iter& operator++();
-    Iter& operator--();
-    Iter operator++(int);
-    Iter operator--(int);
-    Iter operator+(int i) const;
-    Iter operator-(int i) const;
-    Iter& operator+=(int i);
-    Iter& operator-=(int i);
-    bool operator==(const Iter& other) const;
-    bool operator!=(const Iter& other) const;
-    operator ConstIter() const;
-
-private:
-    float* p;
-};
-
-// ------------------------------ Const Iterator -------------------------------
-class NdArray::ConstIter {
-public:
-    ConstIter(const float* p_);
-    const float& operator*() const;
-    const float& operator[](int i) const;
-    ConstIter& operator++();
-    ConstIter& operator--();
-    ConstIter operator++(int);
-    ConstIter operator--(int);
-    ConstIter operator+(int i) const;
-    ConstIter operator-(int i) const;
-    ConstIter& operator+=(int i);
-    ConstIter& operator-=(int i);
-    bool operator==(const ConstIter& other) const;
-    bool operator!=(const ConstIter& other) const;
-
-private:
-    const float* p;
 };
 
 // --------------------------------- Operators ---------------------------------
@@ -394,8 +352,6 @@ NdArray Less(float lhs, const NdArray& rhs);
 NdArray LessEqual(float lhs, const NdArray& rhs);
 // Matrix operators
 NdArray Dot(const NdArray& lhs, const NdArray& rhs);
-NdArray Dot(const NdArray& lhs, float rhs);
-NdArray Dot(float lhs, const NdArray& rhs);
 NdArray Matmul(const NdArray& lhs, const NdArray& rhs);
 NdArray Cross(const NdArray& lhs, const NdArray& rhs);
 // Basic math operators
@@ -444,6 +400,9 @@ NdArray Stack(const std::vector<NdArray>& xs, int axis = 0);
 NdArray Concatenate(const std::vector<NdArray>& xs, int axis = 0);
 std::vector<NdArray> Split(const NdArray& x, int n_section, int axis = 0);
 std::vector<NdArray> Split(const NdArray& x, const Index& idxs, int axis = 0);
+// Change view
+NdArray Transpose(const NdArray& x);
+NdArray Swapaxes(const NdArray& x, int axis1, int axis2);
 // Inverse
 NdArray Inv(const NdArray& x);
 // ------------------------ In-place Operator Functions ------------------------
@@ -541,6 +500,116 @@ NdArray Where(NdArray&& cond, float x, const NdArray& y);
 NdArray Where(NdArray&& cond, float x, float y);
 // Inverse
 NdArray Inv(NdArray&& x);
+
+// --------------------------------- Iterator ----------------------------------
+template <bool C>
+class NdArray::IterBase {
+public:
+    using iterator_category = std::random_access_iterator_tag;
+    using value_type = Float<C>;
+    using difference_type = std::ptrdiff_t;
+    using pointer = Float<C>*;
+    using reference = Float<C>&;
+
+    IterBase(Float<C>* p_);
+    virtual ~IterBase();
+    Float<C>& operator*() const;
+    Float<C>& operator[](int i) const;
+    IterBase& operator++();
+    IterBase& operator--();
+    IterBase operator++(int);
+    IterBase operator--(int);
+    IterBase operator+(int i) const;
+    IterBase operator-(int i) const;
+    IterBase& operator+=(int i);
+    IterBase& operator-=(int i);
+    bool operator==(const IterBase& other) const;
+    bool operator!=(const IterBase& other) const;
+    operator ConstIter() const;
+
+private:
+    Float<C>* p;
+};
+
+// --------------------- Iterator Template Implementation ----------------------
+template <bool C>
+NdArray::IterBase<C>::IterBase(Float<C>* p_) : p(p_) {}
+
+template <bool C>
+NdArray::IterBase<C>::~IterBase() {}
+
+template <bool C>
+Float<C>& NdArray::IterBase<C>::operator*() const {
+    return *p;
+}
+
+template <bool C>
+Float<C>& NdArray::IterBase<C>::operator[](int i) const {
+    return p[i];
+}
+
+template <bool C>
+NdArray::IterBase<C>& NdArray::IterBase<C>::operator++() {
+    p++;
+    return *this;
+}
+
+template <bool C>
+NdArray::IterBase<C>& NdArray::IterBase<C>::operator--() {
+    p--;
+    return *this;
+}
+
+template <bool C>
+NdArray::IterBase<C> NdArray::IterBase<C>::operator++(int) {
+    IterBase tmp = *this;
+    p++;
+    return tmp;
+}
+
+template <bool C>
+NdArray::IterBase<C> NdArray::IterBase<C>::operator--(int) {
+    IterBase tmp = *this;
+    p--;
+    return tmp;
+}
+
+template <bool C>
+NdArray::IterBase<C> NdArray::IterBase<C>::operator+(int i) const {
+    return {p + i};
+}
+
+template <bool C>
+NdArray::IterBase<C> NdArray::IterBase<C>::operator-(int i) const {
+    return {p - i};
+}
+
+template <bool C>
+NdArray::IterBase<C>& NdArray::IterBase<C>::operator+=(int i) {
+    p += i;
+    return *this;
+}
+
+template <bool C>
+NdArray::IterBase<C>& NdArray::IterBase<C>::operator-=(int i) {
+    p -= i;
+    return *this;
+}
+
+template <bool C>
+bool NdArray::IterBase<C>::operator==(const IterBase& other) const {
+    return p == other.p;
+}
+
+template <bool C>
+bool NdArray::IterBase<C>::operator!=(const IterBase& other) const {
+    return p != other.p;
+}
+
+template <bool C>
+NdArray::IterBase<C>::operator NdArray::ConstIter() const {
+    return NdArray::ConstIter{p};
+}
 
 // =============================================================================
 // ================================== Variable =================================
@@ -684,6 +753,12 @@ Variable Add(float lhs, const Variable& rhs);
 Variable Subtract(float lhs, const Variable& rhs);
 Variable Multiply(float lhs, const Variable& rhs);
 Variable Divide(float lhs, const Variable& rhs);
+// Matrix operators
+// Variable Dot(const Variable& lhs, const Variable& rhs);
+// Variable Dot(const Variable& lhs, float rhs);
+// Variable Dot(float lhs, const Variable& rhs);
+Variable Matmul(const Variable& lhs, const Variable& rhs);
+// Variable Cross(const Variable& lhs, const Variable& rhs);
 // Basic math operators
 Variable Abs(const Variable& x);
 Variable Sign(const Variable& x);   // No backward
@@ -2332,6 +2407,101 @@ static std::vector<NdArray> SplitNdArray(const NdArray& x, const Index& idxs,
     return SplitNdArrayImpl(x, idxs, axis);
 }
 
+// -------------------- Utilities for NdArray (Change View) --------------------
+template <typename ViewF>
+static void ChangeNdArrayView(const NdArray::Iter& ret_data,
+                              const NdArray::ConstIter& src_data, size_t size,
+                              ViewF view_func) {
+    // Copy under view conversion function
+    RunParallel(static_cast<int>(size), [&](int src_idx) {
+        // Get result index
+        const int ret_idx = view_func(src_idx);
+        // Copy
+        ret_data[ret_idx] = src_data[src_idx];
+    });
+}
+
+static NdArray TransposeNdArray(const NdArray& src) {
+    const Shape& src_shape = src.shape();
+
+    // Create result shape
+    Shape ret_shape;
+    std::reverse_copy(src_shape.begin(), src_shape.end(),
+                      back_inserter(ret_shape));
+    // Create result array
+    NdArray ret(ret_shape);
+
+    // Pre-compute child sizes
+    const std::vector<int> src_child_sizes = ComputeChildSizes(src_shape);
+    const std::vector<int> ret_child_sizes = ComputeChildSizes(ret_shape);
+
+    // Apply view change
+    const size_t ndim = src_shape.size();
+    ChangeNdArrayView(ret.data(), src.data(), src.size(), [&](int src_idx) {
+        // Decompose
+        auto src_idxs = std::make_unique<int[]>(ndim);
+        for (size_t d = 0; d < ndim; d++) {
+            src_idxs[d] = src_idx / src_child_sizes[d];
+            src_idx -= src_idxs[d] * src_child_sizes[d];
+        }
+        // Compose (with inverting indices)
+        int ret_idx = 0;
+        for (size_t d = 0; d < ndim; d++) {
+            ret_idx += src_idxs[ndim - d - 1] * ret_child_sizes[d];
+        }
+        return ret_idx;
+    });
+    return ret;
+}
+
+static NdArray SwapaxesNdArray(const NdArray& src, int axis1, int axis2) {
+    const Shape& src_shape = src.shape();
+    const size_t ndim = src_shape.size();
+
+    // Fix negative axis
+    if (axis1 < 0) {
+        axis1 = static_cast<int>(src.ndim()) + axis1;
+    }
+    if (axis2 < 0) {
+        axis2 = static_cast<int>(src.ndim()) + axis2;
+    }
+    // Check axis
+    const size_t axis1_l = static_cast<size_t>(axis1);
+    const size_t axis2_l = static_cast<size_t>(axis2);
+    if (ndim <= axis1_l || ndim <= axis2_l) {
+        throw std::runtime_error("Invalid axis for Swapaxes");
+    }
+
+    // Create result shape
+    Shape ret_shape = src_shape;
+    std::swap(ret_shape[axis1_l], ret_shape[axis2_l]);
+    // Create result array
+    NdArray ret(ret_shape);
+
+    // Pre-compute child sizes
+    const std::vector<int> src_child_sizes = ComputeChildSizes(src_shape);
+    const std::vector<int> ret_child_sizes = ComputeChildSizes(ret_shape);
+
+    // Apply view change
+    ChangeNdArrayView(ret.data(), src.data(), src.size(), [&](int src_idx) {
+        // Decompose
+        auto idxs = std::make_unique<int[]>(ndim);
+        for (size_t d = 0; d < ndim; d++) {
+            idxs[d] = src_idx / src_child_sizes[d];
+            src_idx -= idxs[d] * src_child_sizes[d];
+        }
+        // Swap axes
+        std::swap(idxs[axis1_l], idxs[axis2_l]);
+        // Compose
+        int ret_idx = 0;
+        for (size_t d = 0; d < ndim; d++) {
+            ret_idx += idxs[d] * ret_child_sizes[d];
+        }
+        return ret_idx;
+    });
+    return ret;
+}
+
 // ---------------------- Utilities for NdArray (Inverse) ----------------------
 static int CheckInversable(const Shape& shape) {
     if (shape.size() < 2) {
@@ -2345,8 +2515,8 @@ static int CheckInversable(const Shape& shape) {
     return size;
 }
 
-static void InvertNdArray2d(NdArray::Iter ret_data, NdArray::ConstIter src_data,
-                            int order) {
+static void InvertNdArray2d(const NdArray::Iter& ret_data,
+                            const NdArray::ConstIter& src_data, int order) {
     const int order_2 = order * 2;
     const size_t tmp_size = static_cast<size_t>(order_2 * order_2);
     std::unique_ptr<float[]> tmp(new float[tmp_size]);
@@ -2389,18 +2559,18 @@ static void InvertNdArray2d(NdArray::Iter ret_data, NdArray::ConstIter src_data,
     }
 }
 
-static void InvertNdArrayNd(NdArray::Iter ret_data, NdArray::ConstIter src_data,
+static void InvertNdArrayNd(const NdArray::Iter& ret_data,
+                            const NdArray::ConstIter& src_data,
                             const Shape& src_shape, size_t src_size) {
     // Check it is possible to invert
     const int order = CheckInversable(src_shape);
-    // Compute invese for each lower 2 dimension.
+    // Compute inverse for each lower 2 dimension.
     const int one_size = order * order;
     const int n = static_cast<int>(src_size) / one_size;
-    for (int i = 0; i < n; i++) {
-        InvertNdArray2d(ret_data, src_data, order);
-        ret_data += one_size;
-        src_data += one_size;
-    }
+    RunParallel(n, [&](int i) {
+        const int idx = one_size * i;
+        InvertNdArray2d(ret_data + idx, src_data + idx, order);
+    });
 }
 
 static NdArray InvertNdArray(const NdArray& src) {
@@ -2520,136 +2690,6 @@ public:
     Shape shape;
     std::shared_ptr<float> v;  // C++17: Replace with `shared_ptr<float[]>`.
 };
-
-// --------------------------------- Iterator ----------------------------------
-NdArray::Iter::Iter(float* p_) : p(p_) {}
-
-float& NdArray::Iter::operator*() {
-    return *p;
-}
-
-float& NdArray::Iter::operator*() const {
-    return *p;
-}
-
-float& NdArray::Iter::operator[](int i) {
-    return p[i];
-}
-
-float& NdArray::Iter::operator[](int i) const {
-    return p[i];
-}
-
-NdArray::Iter& NdArray::Iter::operator++() {
-    p++;
-    return *this;
-}
-
-NdArray::Iter& NdArray::Iter::operator--() {
-    p--;
-    return *this;
-}
-
-NdArray::Iter NdArray::Iter::operator++(int) {
-    Iter tmp = *this;
-    p++;
-    return tmp;
-}
-
-NdArray::Iter NdArray::Iter::operator--(int) {
-    Iter tmp = *this;
-    p--;
-    return tmp;
-}
-
-NdArray::Iter NdArray::Iter::operator+(int i) const {
-    return {p + i};
-}
-
-NdArray::Iter NdArray::Iter::operator-(int i) const {
-    return {p - i};
-}
-
-NdArray::Iter& NdArray::Iter::operator+=(int i) {
-    p += i;
-    return *this;
-}
-
-NdArray::Iter& NdArray::Iter::operator-=(int i) {
-    p -= i;
-    return *this;
-}
-
-bool NdArray::Iter::operator==(const Iter& other) const {
-    return p == other.p;
-}
-
-bool NdArray::Iter::operator!=(const Iter& other) const {
-    return p != other.p;
-}
-
-NdArray::Iter::operator NdArray::ConstIter() const {
-    return NdArray::ConstIter{p};
-}
-
-// ------------------------------ Const Iterator -------------------------------
-NdArray::ConstIter::ConstIter(const float* p_) : p(p_) {}
-
-const float& NdArray::ConstIter::operator*() const {
-    return *p;
-}
-
-const float& NdArray::ConstIter::operator[](int i) const {
-    return p[i];
-}
-
-NdArray::ConstIter& NdArray::ConstIter::operator++() {
-    p++;
-    return *this;
-}
-
-NdArray::ConstIter& NdArray::ConstIter::operator--() {
-    p--;
-    return *this;
-}
-
-NdArray::ConstIter NdArray::ConstIter::operator++(int) {
-    ConstIter tmp = *this;
-    p++;
-    return tmp;
-}
-
-NdArray::ConstIter NdArray::ConstIter::operator--(int) {
-    ConstIter tmp = *this;
-    p--;
-    return tmp;
-}
-
-NdArray::ConstIter NdArray::ConstIter::operator+(int i) const {
-    return {p + i};
-}
-
-NdArray::ConstIter NdArray::ConstIter::operator-(int i) const {
-    return {p - i};
-}
-
-NdArray::ConstIter& NdArray::ConstIter::operator+=(int i) {
-    p += i;
-    return *this;
-}
-
-NdArray::ConstIter& NdArray::ConstIter::operator-=(int i) {
-    p -= i;
-    return *this;
-}
-
-bool NdArray::ConstIter::operator==(const ConstIter& other) const {
-    return p == other.p;
-}
-
-bool NdArray::ConstIter::operator!=(const ConstIter& other) const {
-    return p != other.p;
-}
 
 // ------------------------------- Static Member -------------------------------
 std::random_device NdArray::s_rand_seed;
@@ -3056,11 +3096,6 @@ NdArray NdArray::slice(std::initializer_list<I>... slice_index) const {
 // --------------------------------- Dot Method --------------------------------
 NdArray NdArray::dot(const NdArray& other) const {
     return DotNdArray(*this, other);
-}
-
-NdArray NdArray::dot(float other) const {
-    // Simple multiply (right)
-    return (*this) * other;
 }
 
 // -------------------------------- Cross Method -------------------------------
@@ -3763,14 +3798,6 @@ NdArray Dot(const NdArray& lhs, const NdArray& rhs) {
     return lhs.dot(rhs);
 }
 
-NdArray Dot(const NdArray& lhs, float rhs) {
-    return lhs * rhs;  // Simple multiply
-}
-
-NdArray Dot(float lhs, const NdArray& rhs) {
-    return lhs * rhs;  // Simple multiply
-}
-
 NdArray Matmul(const NdArray& lhs, const NdArray& rhs) {
     return MatmulNdArray(lhs, rhs);
 }
@@ -3964,6 +3991,15 @@ std::vector<NdArray> Split(const NdArray& x, int n_section, int axis) {
 
 std::vector<NdArray> Split(const NdArray& x, const Index& idxs, int axis) {
     return SplitNdArray(x, idxs, axis);
+}
+
+// Change view
+NdArray Transpose(const NdArray& x) {
+    return TransposeNdArray(x);
+}
+
+NdArray Swapaxes(const NdArray& x, int axis1, int axis2) {
+    return SwapaxesNdArray(x, axis1, axis2);
 }
 
 // Inverse
@@ -5089,6 +5125,40 @@ struct DivideFromFloatSubst : public Function::Substance {
     const float c;
 };
 
+// Matrix operators
+struct MatmulSubst : public Function::Substance {
+    MatmulSubst() : Substance(2, 1, {0, 1}, {}) {}
+    virtual ~MatmulSubst() {}
+    virtual NdArrays forward(InNd x) override {
+        return {Matmul(x[0], x[1])};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)y;
+        NdArray a = x[0];
+        NdArray b = x[1];
+        NdArray gy_a = gy[0];
+        NdArray gy_b = gy[0];
+        if (a.ndim() == 1) {
+            // Extend a axis
+            a = a.reshape(1, -1);
+            // Extend gy axis at (-2)
+            auto shape = gy_a.shape();
+            shape.insert(shape.end() - 1, 1);
+            gy_a = gy_a.reshape(shape);
+        }
+        if (b.ndim() == 1) {
+            // Extend b axis
+            b = b.reshape(-1, 1);
+            // Extend gy axis at (-1)
+            auto shape = gy_b.shape();
+            shape.insert(shape.end(), 1);
+            gy_b = gy_b.reshape(shape);
+        }
+        return {SumTo(Matmul(gy_b, Swapaxes(b, -1, -2)), x[0].shape()),
+                SumTo(Matmul(Swapaxes(a, -1, -2), gy_a), x[1].shape())};
+    }
+};
+
 // Basic math operators
 struct AbsSubst : public Function::Substance {
     AbsSubst() : Substance(1, 1, {0}, {}) {}
@@ -5387,6 +5457,11 @@ Variable Multiply(float lhs, const Variable& rhs) {
 
 Variable Divide(float lhs, const Variable& rhs) {
     return FuncImpl<DivideFromFloatSubst>(lhs)({rhs})[0];
+}
+
+// Matrix operators
+Variable Matmul(const Variable& lhs, const Variable& rhs) {
+    return FuncImpl<MatmulSubst>()({lhs, rhs})[0];
 }
 
 // Basic math operators

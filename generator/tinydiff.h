@@ -182,6 +182,12 @@ Variable Add(float lhs, const Variable& rhs);
 Variable Subtract(float lhs, const Variable& rhs);
 Variable Multiply(float lhs, const Variable& rhs);
 Variable Divide(float lhs, const Variable& rhs);
+// Matrix operators
+// Variable Dot(const Variable& lhs, const Variable& rhs);
+// Variable Dot(const Variable& lhs, float rhs);
+// Variable Dot(float lhs, const Variable& rhs);
+Variable Matmul(const Variable& lhs, const Variable& rhs);
+// Variable Cross(const Variable& lhs, const Variable& rhs);
 // Basic math operators
 Variable Abs(const Variable& x);
 Variable Sign(const Variable& x);   // No backward
@@ -970,6 +976,40 @@ struct DivideFromFloatSubst : public Function::Substance {
     const float c;
 };
 
+// Matrix operators
+struct MatmulSubst : public Function::Substance {
+    MatmulSubst() : Substance(2, 1, {0, 1}, {}) {}
+    virtual ~MatmulSubst() {}
+    virtual NdArrays forward(InNd x) override {
+        return {Matmul(x[0], x[1])};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)y;
+        NdArray a = x[0];
+        NdArray b = x[1];
+        NdArray gy_a = gy[0];
+        NdArray gy_b = gy[0];
+        if (a.ndim() == 1) {
+            // Extend a axis
+            a = a.reshape(1, -1);
+            // Extend gy axis at (-2)
+            auto shape = gy_a.shape();
+            shape.insert(shape.end() - 1, 1);
+            gy_a = gy_a.reshape(shape);
+        }
+        if (b.ndim() == 1) {
+            // Extend b axis
+            b = b.reshape(-1, 1);
+            // Extend gy axis at (-1)
+            auto shape = gy_b.shape();
+            shape.insert(shape.end(), 1);
+            gy_b = gy_b.reshape(shape);
+        }
+        return {SumTo(Matmul(gy_b, Swapaxes(b, -1, -2)), x[0].shape()),
+                SumTo(Matmul(Swapaxes(a, -1, -2), gy_a), x[1].shape())};
+    }
+};
+
 // Basic math operators
 struct AbsSubst : public Function::Substance {
     AbsSubst() : Substance(1, 1, {0}, {}) {}
@@ -1268,6 +1308,11 @@ Variable Multiply(float lhs, const Variable& rhs) {
 
 Variable Divide(float lhs, const Variable& rhs) {
     return FuncImpl<DivideFromFloatSubst>(lhs)({rhs})[0];
+}
+
+// Matrix operators
+Variable Matmul(const Variable& lhs, const Variable& rhs) {
+    return FuncImpl<MatmulSubst>()({lhs, rhs})[0];
 }
 
 // Basic math operators
