@@ -311,11 +311,19 @@ TEST_CASE("AutoGrad") {
         CheckData(v_div, "[0.5, 1]");
     }
 
-    // ---------------------------- Matrix operators ---------------------------
-    SECTION("Matrix operators") {
+    // ---------------------------- Malmul operators ---------------------------
+    SECTION("Matmul operator") {
         Variable v1 = {1.5f, 2.f};
         Variable v2 = {{3.f, 4.f}, {5.f, 6.f}};
-        // Backward from left to right
+        Variable v3 = {{5.f, 6.f}, {7.f, 8.f}};
+        Variable v4 = {{{3.f, 4.f}, {5.f, 6.f}}};
+        Variable v5 = {{{5.f, 6.f}}, {{7.f, 8.f}}};
+        // 1d @ 1d
+        auto v11 = F::Matmul(v1, v1);
+//         v11.backward();
+//         CheckGrad(v1, "[3, 4]");
+//         CheckData(v11, "[6.25]");
+        // 1d @ 2d
         auto v12 = F::Matmul(v1, v2);
         v12.backward();
         CheckGrad(v1, "[7, 11]");
@@ -323,7 +331,7 @@ TEST_CASE("AutoGrad") {
                   "[[1.5, 1.5],\n"
                   " [2, 2]]");
         CheckData(v12, "[14.5, 18]");
-        // Backward from right to left
+        // 2d @ 1d
         auto v21 = F::Matmul(v2, v1);
         v21.backward();
         CheckGrad(v1, "[8, 10]");
@@ -331,6 +339,46 @@ TEST_CASE("AutoGrad") {
                   "[[1.5, 2],\n"
                   " [1.5, 2]]");
         CheckData(v21, "[12.5, 19.5]");
+        // 2d @ 2d
+        auto v23 = F::Matmul(v2, v3);
+        v23.backward();
+        CheckGrad(v2,
+                  "[[11, 15],\n"
+                  " [11, 15]]");
+        CheckGrad(v3,
+                  "[[8, 8],\n"
+                  " [10, 10]]");
+        CheckData(v23,
+                  "[[43, 50],\n"
+                  " [67, 78]]");
+        // 1d @ 3d
+        auto v14 = F::Matmul(v1, v4);
+        v14.backward();
+        CheckGrad(v1, "[7, 11]");
+        CheckGrad(v4,
+                  "[[[1.5, 1.5],\n"
+                  "  [2, 2]]]");
+        CheckData(v14, "[[14.5, 18]]");
+        // 3d @ 1d
+//         auto v41 = F::Matmul(v4, v1);
+//         v41.backward();
+//         CheckGrad(v1, "[8, 10]");
+//         CheckGrad(v4,
+//                   "[[[1.5, 2],\n"
+//                   "  [1.5, 2]]]");
+//         CheckData(v41, "[12.5, 19.5]");
+        // 3d @ 3d
+        auto v54 = F::Matmul(v5, v4);
+        v54.backward();
+        CheckGrad(v4,
+                  "[[[12, 12],\n"
+                  "  [14, 14]]]");
+        CheckGrad(v5,
+                  "[[[7, 11]],\n"
+                  " [[7, 11]]]");
+        CheckData(v54,
+                  "[[[45, 56]],\n"
+                  " [[61, 76]]]");
     }
 
     // -------------------------- Basic math operators -------------------------

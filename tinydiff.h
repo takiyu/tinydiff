@@ -5154,6 +5154,7 @@ struct MatmulSubst : public Function::Substance {
             shape.insert(shape.end(), 1);
             gy_b = gy_b.reshape(shape);
         }
+        // TODO: Implement for non-matmul pattern
         return {SumTo(Matmul(gy_b, Swapaxes(b, -1, -2)), x[0].shape()),
                 SumTo(Matmul(Swapaxes(a, -1, -2), gy_a), x[1].shape())};
     }
