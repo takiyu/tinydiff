@@ -1999,38 +1999,13 @@ static NdArray MatmulNdArray(const NdArray& lhs, const NdArray& rhs) {
         throw std::runtime_error("Matmul product of empty array");
     }
 
-    Shape l_shape = lhs.shape();
-    Shape r_shape = rhs.shape();
-
-    // Extends 1D to 2D
-    const bool l_extend_1d = (l_shape.size() == 1);
-    const bool r_extend_1d = (r_shape.size() == 1);
-    if (l_extend_1d) {
-        l_shape = Shape{1, l_shape[0]};
+    if (lhs.ndim() == 1 || rhs.ndim() == 1) {
+        // Use dot for 1-dim arrays
+        return Dot(lhs, rhs);
+    } else {
+        // Run matmul for higher dimensions
+        return MatmulNdArrayImpl(lhs, rhs);
     }
-    if (r_extend_1d) {
-        r_shape = Shape{r_shape[0], 1};
-    }
-
-    // Run matmul
-    NdArray ret = MatmulNdArrayImpl(lhs.reshape(l_shape), rhs.reshape(r_shape));
-
-    // Shrink 2D to 1D
-    const Shape& ret_shape = ret.shape();
-    if (l_extend_1d && r_extend_1d) {
-        Shape new_ret_shape(ret_shape.begin(), ret_shape.end() - 2);
-        return ret.reshape(new_ret_shape);
-    }
-    if (l_extend_1d) {
-        Shape new_ret_shape(ret_shape.begin(), ret_shape.end() - 2);
-        new_ret_shape.insert(new_ret_shape.end(), ret_shape.end()[-1]);
-        return ret.reshape(new_ret_shape);
-    }
-    if (r_extend_1d) {
-        Shape new_ret_shape(ret_shape.begin(), ret_shape.end() - 1);
-        return ret.reshape(new_ret_shape);
-    }
-    return ret;
 }
 
 // ------------------- Utilities for NdArray (Cross product) -------------------
@@ -5134,29 +5109,62 @@ struct MatmulSubst : public Function::Substance {
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         (void)y;
-        NdArray a = x[0];
-        NdArray b = x[1];
-        NdArray gy_a = gy[0];
-        NdArray gy_b = gy[0];
-        if (a.ndim() == 1) {
-            // Extend a axis
-            a = a.reshape(1, -1);
-            // Extend gy axis at (-2)
-            auto shape = gy_a.shape();
-            shape.insert(shape.end() - 1, 1);
-            gy_a = gy_a.reshape(shape);
+        const NdArray& a = x[0];
+        const NdArray& b = x[1];
+        const NdArray& gy0 = gy[0];
+        const bool is_a_vec = (a.ndim() == 1);
+        const bool is_b_vec = (b.ndim() == 1);
+
+        NdArray ga;
+        if (is_b_vec) {
+            if (is_a_vec) {
+                ga = gy0 * b;
+            } else {
+                // Extend gy axis at (-1)
+                auto gy_shape = gy0.shape();
+                gy_shape.insert(gy_shape.end(), 1);
+                // Multiply
+                ga = gy0.reshape(gy_shape) * b;
+            }
+        } else {
+            ga = SumTo(Matmul(gy0, Swapaxes(b, -1, -2)), x[0].shape());
         }
-        if (b.ndim() == 1) {
-            // Extend b axis
-            b = b.reshape(-1, 1);
-            // Extend gy axis at (-1)
-            auto shape = gy_b.shape();
-            shape.insert(shape.end(), 1);
-            gy_b = gy_b.reshape(shape);
+
+        NdArray gb;
+        if (is_a_vec) {
+            if (is_b_vec) {
+                gb = a * gy0;
+            } else {
+                // Extend a axis
+                auto a_shape = a.shape();
+                a_shape.insert(a_shape.end(), 1);
+                // Extend gy axis at (-1)
+                auto gy_shape = gy0.shape();
+                if (1 < gy_shape.size()) {
+                    gy_shape.insert(gy_shape.end() - 1, 1);
+                }
+                // Multiply
+                gb = a.reshape(a_shape) * gy0.reshape(gy_shape);
+            }
+        } else if (is_b_vec) {
+                std::cout << "b3" << std::endl;
+                auto a_shape = a.shape();
+//                 a_shape.insert(a_shape.end() - 1, 1);
+                // Extend gy axis at (-1)
+                auto gy_shape = gy0.shape();
+                gy_shape.insert(gy_shape.end(), 1);
+                std::cout << a << std::endl;
+                std::cout << gy0 << std::endl;
+                auto a_ = Swapaxes(a.reshape(a_shape), -1, -2);
+                auto gy_ = gy0.reshape(gy_shape);
+                std::cout << a_ << std::endl;
+                std::cout << gy_ << std::endl;
+            gb = SumTo(Matmul(a_, gy_), x[1].shape());
+        } else {
+            gb = SumTo(Matmul(Swapaxes(a, -1, -2), gy0), x[1].shape());
         }
-        // TODO: Implement for non-matmul pattern
-        return {SumTo(Matmul(gy_b, Swapaxes(b, -1, -2)), x[0].shape()),
-                SumTo(Matmul(Swapaxes(a, -1, -2), gy_a), x[1].shape())};
+
+        return {std::move(ga), std::move(gb)};
     }
 };
 

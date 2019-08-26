@@ -320,9 +320,9 @@ TEST_CASE("AutoGrad") {
         Variable v5 = {{{5.f, 6.f}}, {{7.f, 8.f}}};
         // 1d @ 1d
         auto v11 = F::Matmul(v1, v1);
-//         v11.backward();
-//         CheckGrad(v1, "[3, 4]");
-//         CheckData(v11, "[6.25]");
+        v11.backward();
+        CheckGrad(v1, "[3, 4]");
+        CheckData(v11, "[6.25]");
         // 1d @ 2d
         auto v12 = F::Matmul(v1, v2);
         v12.backward();
@@ -360,13 +360,15 @@ TEST_CASE("AutoGrad") {
                   "  [2, 2]]]");
         CheckData(v14, "[[14.5, 18]]");
         // 3d @ 1d
-//         auto v41 = F::Matmul(v4, v1);
-//         v41.backward();
-//         CheckGrad(v1, "[8, 10]");
-//         CheckGrad(v4,
-//                   "[[[1.5, 2],\n"
-//                   "  [1.5, 2]]]");
-//         CheckData(v41, "[12.5, 19.5]");
+        std::cout << "test3---------------------------" << std::endl;
+        auto v41 = F::Matmul(v4, v1);
+        v41.backward();
+        CheckGrad(v1, "[8, 10]");
+        CheckGrad(v4,
+                  "[[[1.5, 2],\n"
+                  "  [1.5, 2]]]");
+        CheckData(v41, "[[12.5, 19.5]]");
+        std::cout << "test4---------------------------" << std::endl;
         // 3d @ 3d
         auto v54 = F::Matmul(v5, v4);
         v54.backward();

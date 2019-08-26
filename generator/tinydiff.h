@@ -985,29 +985,62 @@ struct MatmulSubst : public Function::Substance {
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         (void)y;
-        NdArray a = x[0];
-        NdArray b = x[1];
-        NdArray gy_a = gy[0];
-        NdArray gy_b = gy[0];
-        if (a.ndim() == 1) {
-            // Extend a axis
-            a = a.reshape(1, -1);
-            // Extend gy axis at (-2)
-            auto shape = gy_a.shape();
-            shape.insert(shape.end() - 1, 1);
-            gy_a = gy_a.reshape(shape);
+        const NdArray& a = x[0];
+        const NdArray& b = x[1];
+        const NdArray& gy0 = gy[0];
+        const bool is_a_vec = (a.ndim() == 1);
+        const bool is_b_vec = (b.ndim() == 1);
+
+        NdArray ga;
+        if (is_b_vec) {
+            if (is_a_vec) {
+                ga = gy0 * b;
+            } else {
+                // Extend gy axis at (-1)
+                auto gy_shape = gy0.shape();
+                gy_shape.insert(gy_shape.end(), 1);
+                // Multiply
+                ga = gy0.reshape(gy_shape) * b;
+            }
+        } else {
+            ga = SumTo(Matmul(gy0, Swapaxes(b, -1, -2)), x[0].shape());
         }
-        if (b.ndim() == 1) {
-            // Extend b axis
-            b = b.reshape(-1, 1);
-            // Extend gy axis at (-1)
-            auto shape = gy_b.shape();
-            shape.insert(shape.end(), 1);
-            gy_b = gy_b.reshape(shape);
+
+        NdArray gb;
+        if (is_a_vec) {
+            if (is_b_vec) {
+                gb = a * gy0;
+            } else {
+                // Extend a axis
+                auto a_shape = a.shape();
+                a_shape.insert(a_shape.end(), 1);
+                // Extend gy axis at (-1)
+                auto gy_shape = gy0.shape();
+                if (1 < gy_shape.size()) {
+                    gy_shape.insert(gy_shape.end() - 1, 1);
+                }
+                // Multiply
+                gb = a.reshape(a_shape) * gy0.reshape(gy_shape);
+            }
+        } else if (is_b_vec) {
+                std::cout << "b3" << std::endl;
+                auto a_shape = a.shape();
+//                 a_shape.insert(a_shape.end() - 1, 1);
+                // Extend gy axis at (-1)
+                auto gy_shape = gy0.shape();
+                gy_shape.insert(gy_shape.end(), 1);
+                std::cout << a << std::endl;
+                std::cout << gy0 << std::endl;
+                auto a_ = Swapaxes(a.reshape(a_shape), -1, -2);
+                auto gy_ = gy0.reshape(gy_shape);
+                std::cout << a_ << std::endl;
+                std::cout << gy_ << std::endl;
+            gb = SumTo(Matmul(a_, gy_), x[1].shape());
+        } else {
+            gb = SumTo(Matmul(Swapaxes(a, -1, -2), gy0), x[1].shape());
         }
-        // TODO: Implement for non-matmul pattern
-        return {SumTo(Matmul(gy_b, Swapaxes(b, -1, -2)), x[0].shape()),
-                SumTo(Matmul(Swapaxes(a, -1, -2), gy_a), x[1].shape())};
+
+        return {std::move(ga), std::move(gb)};
     }
 };
 
