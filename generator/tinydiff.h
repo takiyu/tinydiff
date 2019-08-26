@@ -991,42 +991,36 @@ struct MatmulSubst : public Function::Substance {
         const bool is_a_vec = (a.ndim() == 1);
         const bool is_b_vec = (b.ndim() == 1);
 
+        // For gradient lhs
         NdArray ga;
         if (is_b_vec) {
             if (is_a_vec) {
                 ga = gy0 * b;
             } else {
-                // Extend gy axis at (-1)
-                auto gy_shape = gy0.shape();
-                gy_shape.insert(gy_shape.end(), 1);
-                // Multiply
-                ga = gy0.reshape(gy_shape) * b;
+                // Multiply (Extend gy axis at (-1))
+                ga = ExpandDims(gy0, -1) * b;
             }
         } else {
             ga = SumTo(Matmul(gy0, Swapaxes(b, -1, -2)), a.shape());
         }
 
+        // For gradient rhs
         NdArray gb;
         if (is_a_vec) {
             if (is_b_vec) {
                 gb = a * gy0;
             } else {
-                // Extend a axis (-1)
-                auto a_shape = a.shape();
-                a_shape.insert(a_shape.end(), 1);
                 // Extend gy axis at (-2)
                 auto gy_shape = gy0.shape();
                 if (1 < gy_shape.size()) {
                     gy_shape.insert(gy_shape.end() - 1, 1);
                 }
-                // Multiply
-                gb = a.reshape(a_shape) * gy0.reshape(gy_shape);
+                // Multiply (Extend a axis (-1))
+                gb = ExpandDims(a, -1) * gy0.reshape(gy_shape);
             }
         } else if (is_b_vec) {
-                // Extend gy axis at (-1)
-                auto gy_shape = gy0.shape();
-                gy_shape.insert(gy_shape.end(), 1);
-                gb = Matmul(Swapaxes(a, -1, -2), gy0.reshape(gy_shape));
+                // Multiply (Extend gy axis at (-1))
+                gb = Matmul(Swapaxes(a, -1, -2), ExpandDims(gy0, -1));
                 // Shrink the last dim (b is vector)
                 gb = gb.reshape(-1);
         } else {
