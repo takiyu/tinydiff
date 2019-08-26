@@ -360,7 +360,6 @@ TEST_CASE("AutoGrad") {
                   "  [2, 2]]]");
         CheckData(v14, "[[14.5, 18]]");
         // 3d @ 1d
-        std::cout << "test3---------------------------" << std::endl;
         auto v41 = F::Matmul(v4, v1);
         v41.backward();
         CheckGrad(v1, "[8, 10]");
@@ -368,7 +367,6 @@ TEST_CASE("AutoGrad") {
                   "[[[1.5, 2],\n"
                   "  [1.5, 2]]]");
         CheckData(v41, "[[12.5, 19.5]]");
-        std::cout << "test4---------------------------" << std::endl;
         // 3d @ 3d
         auto v54 = F::Matmul(v5, v4);
         v54.backward();

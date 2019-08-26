@@ -1003,7 +1003,7 @@ struct MatmulSubst : public Function::Substance {
                 ga = gy0.reshape(gy_shape) * b;
             }
         } else {
-            ga = SumTo(Matmul(gy0, Swapaxes(b, -1, -2)), x[0].shape());
+            ga = SumTo(Matmul(gy0, Swapaxes(b, -1, -2)), a.shape());
         }
 
         NdArray gb;
@@ -1011,10 +1011,10 @@ struct MatmulSubst : public Function::Substance {
             if (is_b_vec) {
                 gb = a * gy0;
             } else {
-                // Extend a axis
+                // Extend a axis (-1)
                 auto a_shape = a.shape();
                 a_shape.insert(a_shape.end(), 1);
-                // Extend gy axis at (-1)
+                // Extend gy axis at (-2)
                 auto gy_shape = gy0.shape();
                 if (1 < gy_shape.size()) {
                     gy_shape.insert(gy_shape.end() - 1, 1);
@@ -1023,21 +1023,14 @@ struct MatmulSubst : public Function::Substance {
                 gb = a.reshape(a_shape) * gy0.reshape(gy_shape);
             }
         } else if (is_b_vec) {
-                std::cout << "b3" << std::endl;
-                auto a_shape = a.shape();
-//                 a_shape.insert(a_shape.end() - 1, 1);
                 // Extend gy axis at (-1)
                 auto gy_shape = gy0.shape();
                 gy_shape.insert(gy_shape.end(), 1);
-                std::cout << a << std::endl;
-                std::cout << gy0 << std::endl;
-                auto a_ = Swapaxes(a.reshape(a_shape), -1, -2);
-                auto gy_ = gy0.reshape(gy_shape);
-                std::cout << a_ << std::endl;
-                std::cout << gy_ << std::endl;
-            gb = SumTo(Matmul(a_, gy_), x[1].shape());
+                gb = Matmul(Swapaxes(a, -1, -2), gy0.reshape(gy_shape));
+                // Shrink the last dim (b is vector)
+                gb = gb.reshape(-1);
         } else {
-            gb = SumTo(Matmul(Swapaxes(a, -1, -2), gy0), x[1].shape());
+            gb = SumTo(Matmul(Swapaxes(a, -1, -2), gy0), b.shape());
         }
 
         return {std::move(ga), std::move(gb)};
