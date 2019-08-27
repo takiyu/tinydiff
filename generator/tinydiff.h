@@ -85,11 +85,11 @@ public:
     void clearGrad();
     void addGrad(const NdArray& grad);
 
-    class Substance;
+    class Subsetance;
 
 private:
-    std::shared_ptr<Substance> m_sub;
-    Variable(std::shared_ptr<Substance> sub);
+    std::shared_ptr<Subsetance> m_sub;
+    Variable(std::shared_ptr<Subsetance> sub);
 };
 
 // --------------------------------- Operators ---------------------------------
@@ -151,11 +151,11 @@ public:
     void setRank(size_t rank);
     size_t getRank() const;
 
-    class Substance;
+    class Subsetance;
 
 protected:
-    std::shared_ptr<Substance> m_sub;
-    Function(std::shared_ptr<Substance> sub);
+    std::shared_ptr<Subsetance> m_sub;
+    Function(std::shared_ptr<Subsetance> sub);
 };
 
 // =============================================================================
@@ -183,11 +183,7 @@ Variable Subtract(float lhs, const Variable& rhs);
 Variable Multiply(float lhs, const Variable& rhs);
 Variable Divide(float lhs, const Variable& rhs);
 // Matrix operators
-// Variable Dot(const Variable& lhs, const Variable& rhs);
-// Variable Dot(const Variable& lhs, float rhs);
-// Variable Dot(float lhs, const Variable& rhs);
 Variable Matmul(const Variable& lhs, const Variable& rhs);
-// Variable Cross(const Variable& lhs, const Variable& rhs);
 // Basic math operators
 Variable Abs(const Variable& x);
 Variable Sign(const Variable& x);   // No backward
@@ -212,6 +208,9 @@ Variable ArcTan(const Variable& x);
 Variable ArcTan2(const Variable& y, const Variable& x);
 Variable ArcTan2(const Variable& y, float x);
 Variable ArcTan2(float y, const Variable& x);
+// Axis functions
+Variable Sum(const Variable& x, const Axis& axes = {}, bool keepdims = false);
+Variable Mean(const Variable& x, const Axis& axes = {}, bool keepdims = false);
 
 }  // namespace F
 
@@ -418,9 +417,9 @@ static NdArray SumTo(const NdArray& x, const Shape& shape) {
 // =============================================================================
 // ============================ Variable Definition ============================
 // =============================================================================
-Variable::Variable() : m_sub(std::make_shared<Substance>()) {}
+Variable::Variable() : m_sub(std::make_shared<Subsetance>()) {}
 
-Variable::Variable(std::shared_ptr<Substance> sub) : m_sub(sub) {}
+Variable::Variable(std::shared_ptr<Subsetance> sub) : m_sub(sub) {}
 
 Variable::Variable(const Variable& lhs) = default;  // shallow copy
 
@@ -436,10 +435,11 @@ Variable& Variable::operator=(Variable&& lhs) {  // move
 
 Variable::~Variable() = default;
 
-// --------------------------------- Substance ---------------------------------
-class Variable::Substance {
+// --------------------------------- Subsetance
+// ---------------------------------
+class Variable::Subsetance {
 public:
-    Substance(const NdArray& data_ = {}) : data(data_), shape(data_.shape()) {}
+    Subsetance(const NdArray& data_ = {}) : data(data_), shape(data_.shape()) {}
 
     NdArray data;
     NdArray grad;
@@ -448,7 +448,7 @@ public:
 };
 
 // ------------------------------- Constructors --------------------------------
-Variable::Variable(const NdArray& v) : m_sub(std::make_shared<Substance>(v)) {}
+Variable::Variable(const NdArray& v) : m_sub(std::make_shared<Subsetance>(v)) {}
 
 Variable::Variable(FloatList<0> init_list) : Variable(NdArray(init_list)) {}
 
@@ -493,7 +493,7 @@ size_t Variable::ndim() const {
 
 Variable Variable::copyUnretained() const {
     // Copy all (NdArray is copied in shallow)
-    auto sub = std::make_shared<Substance>(*m_sub);
+    auto sub = std::make_shared<Subsetance>(*m_sub);
     // Unretain
     sub->data = NdArray();
     return Variable(sub);
@@ -694,9 +694,9 @@ Variable operator/=(Variable& lhs, float rhs) {
 // =============================================================================
 // ============================ Function Definition ============================
 // =============================================================================
-Function::Function() : m_sub(std::make_shared<Substance>()) {}
+Function::Function() : m_sub(std::make_shared<Subsetance>()) {}
 
-Function::Function(std::shared_ptr<Substance> sub) : m_sub(sub) {}
+Function::Function(std::shared_ptr<Subsetance> sub) : m_sub(sub) {}
 
 Function::Function(const Function& lhs) = default;  // shallow copy
 
@@ -712,20 +712,21 @@ Function& Function::operator=(Function&& lhs) {  // move
 
 Function::~Function() = default;
 
-// --------------------------------- Substance ---------------------------------
-class Function::Substance {
+// --------------------------------- Subsetance
+// ---------------------------------
+class Function::Subsetance {
 public:
     // Alias for shorter code
     using InNd = const NdArrays&;
 
-    Substance(size_t n_inp_ = 0, size_t n_out_ = 0,
-              const std::vector<size_t>& retain_inp_idxs_ = {},
-              const std::vector<size_t>& retain_out_idxs_ = {})
+    Subsetance(size_t n_inp_ = 0, size_t n_out_ = 0,
+               const std::vector<size_t>& retain_inp_idxs_ = {},
+               const std::vector<size_t>& retain_out_idxs_ = {})
         : n_inp(n_inp_),
           n_out(n_out_),
           retain_inp_idxs(retain_inp_idxs_),
           retain_out_idxs(retain_out_idxs_) {}
-    virtual ~Substance() {}
+    virtual ~Subsetance() {}
 
     virtual NdArrays forward(InNd x) {
         return x;  // Through
@@ -748,7 +749,7 @@ public:
 
 // ---------------------------------- Methods ----------------------------------
 void Function::clear() {
-    m_sub = std::make_shared<Substance>();
+    m_sub = std::make_shared<Subsetance>();
 }
 
 Variables Function::operator()(const Variables& x) {
@@ -816,10 +817,10 @@ size_t Function::getRank() const {
 namespace F {
 
 // Single
-struct PositiveSubst : public Function::Substance {
-    PositiveSubst()
-        : Substance(1, 1, {}, {}) {}  // n_inp, n_out, retain_indices
-    virtual ~PositiveSubst() {}
+struct PositiveSubset : public Function::Subsetance {
+    PositiveSubset()
+        : Subsetance(1, 1, {}, {}) {}  // n_inp, n_out, retain_indices
+    virtual ~PositiveSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {+x[0]};
     }
@@ -829,9 +830,9 @@ struct PositiveSubst : public Function::Substance {
     }
 };
 
-struct NegativeSubst : public Function::Substance {
-    NegativeSubst() : Substance(1, 1, {}, {}) {}
-    virtual ~NegativeSubst() {}
+struct NegativeSubset : public Function::Subsetance {
+    NegativeSubset() : Subsetance(1, 1, {}, {}) {}
+    virtual ~NegativeSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {-x[0]};
     }
@@ -842,9 +843,9 @@ struct NegativeSubst : public Function::Substance {
 };
 
 // Arithmetic (Variable, Variable)
-struct AddSubst : public Function::Substance {
-    AddSubst() : Substance(2, 1, {0, 1}, {}) {}
-    virtual ~AddSubst() {}
+struct AddSubset : public Function::Subsetance {
+    AddSubset() : Subsetance(2, 1, {0, 1}, {}) {}
+    virtual ~AddSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {x[0] + x[1]};
     }
@@ -854,9 +855,9 @@ struct AddSubst : public Function::Substance {
     }
 };
 
-struct SubtractSubst : public Function::Substance {
-    SubtractSubst() : Substance(2, 1, {0, 1}, {}) {}
-    virtual ~SubtractSubst() {}
+struct SubtractSubset : public Function::Subsetance {
+    SubtractSubset() : Subsetance(2, 1, {0, 1}, {}) {}
+    virtual ~SubtractSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {x[0] - x[1]};
     }
@@ -866,9 +867,9 @@ struct SubtractSubst : public Function::Substance {
     }
 };
 
-struct MultiplySubst : public Function::Substance {
-    MultiplySubst() : Substance(2, 1, {0, 1}, {}) {}
-    virtual ~MultiplySubst() {}
+struct MultiplySubset : public Function::Subsetance {
+    MultiplySubset() : Subsetance(2, 1, {0, 1}, {}) {}
+    virtual ~MultiplySubset() {}
     virtual NdArrays forward(InNd x) override {
         return {x[0] * x[1]};
     }
@@ -879,9 +880,9 @@ struct MultiplySubst : public Function::Substance {
     }
 };
 
-struct DivideSubst : public Function::Substance {
-    DivideSubst() : Substance(2, 1, {0, 1}, {}) {}
-    virtual ~DivideSubst() {}
+struct DivideSubset : public Function::Subsetance {
+    DivideSubset() : Subsetance(2, 1, {0, 1}, {}) {}
+    virtual ~DivideSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {x[0] / x[1]};
     }
@@ -894,9 +895,9 @@ struct DivideSubst : public Function::Substance {
 };
 
 // Arithmetic (Variable, float)
-struct AddFloatSubst : public Function::Substance {
-    AddFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
-    virtual ~AddFloatSubst() {}
+struct AddFloatSubset : public Function::Subsetance {
+    AddFloatSubset(float c_) : Subsetance(1, 1, {0}, {}), c(c_) {}
+    virtual ~AddFloatSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {x[0] + c};
     }
@@ -907,9 +908,9 @@ struct AddFloatSubst : public Function::Substance {
     const float c;
 };
 
-struct SubtractFloatSubst : public Function::Substance {
-    SubtractFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
-    virtual ~SubtractFloatSubst() {}
+struct SubtractFloatSubset : public Function::Subsetance {
+    SubtractFloatSubset(float c_) : Subsetance(1, 1, {0}, {}), c(c_) {}
+    virtual ~SubtractFloatSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {x[0] - c};
     }
@@ -920,9 +921,9 @@ struct SubtractFloatSubst : public Function::Substance {
     const float c;
 };
 
-struct MultiplyFloatSubst : public Function::Substance {
-    MultiplyFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
-    virtual ~MultiplyFloatSubst() {}
+struct MultiplyFloatSubset : public Function::Subsetance {
+    MultiplyFloatSubset(float c_) : Subsetance(1, 1, {0}, {}), c(c_) {}
+    virtual ~MultiplyFloatSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {x[0] * c};
     }
@@ -933,9 +934,9 @@ struct MultiplyFloatSubst : public Function::Substance {
     const float c;
 };
 
-struct DivideFloatSubst : public Function::Substance {
-    DivideFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
-    virtual ~DivideFloatSubst() {}
+struct DivideFloatSubset : public Function::Subsetance {
+    DivideFloatSubset(float c_) : Subsetance(1, 1, {0}, {}), c(c_) {}
+    virtual ~DivideFloatSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {x[0] / c};
     }
@@ -948,9 +949,9 @@ struct DivideFloatSubst : public Function::Substance {
 };
 
 // Arithmetic (float, Variable)
-struct SubtractFromFloatSubst : public Function::Substance {
-    SubtractFromFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
-    virtual ~SubtractFromFloatSubst() {}
+struct SubtractFromFloatSubset : public Function::Subsetance {
+    SubtractFromFloatSubset(float c_) : Subsetance(1, 1, {0}, {}), c(c_) {}
+    virtual ~SubtractFromFloatSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {c - x[0]};
     }
@@ -961,9 +962,9 @@ struct SubtractFromFloatSubst : public Function::Substance {
     const float c;
 };
 
-struct DivideFromFloatSubst : public Function::Substance {
-    DivideFromFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
-    virtual ~DivideFromFloatSubst() {}
+struct DivideFromFloatSubset : public Function::Subsetance {
+    DivideFromFloatSubset(float c_) : Subsetance(1, 1, {0}, {}), c(c_) {}
+    virtual ~DivideFromFloatSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {c / x[0]};
     }
@@ -977,9 +978,9 @@ struct DivideFromFloatSubst : public Function::Substance {
 };
 
 // Matrix operators
-struct MatmulSubst : public Function::Substance {
-    MatmulSubst() : Substance(2, 1, {0, 1}, {}) {}
-    virtual ~MatmulSubst() {}
+struct MatmulSubset : public Function::Subsetance {
+    MatmulSubset() : Subsetance(2, 1, {0, 1}, {}) {}
+    virtual ~MatmulSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {Matmul(x[0], x[1])};
     }
@@ -1019,10 +1020,10 @@ struct MatmulSubst : public Function::Substance {
                 gb = ExpandDims(a, -1) * gy0.reshape(gy_shape);
             }
         } else if (is_b_vec) {
-                // Multiply (Extend gy axis at (-1))
-                gb = Matmul(Swapaxes(a, -1, -2), ExpandDims(gy0, -1));
-                // Shrink the last dim (b is vector)
-                gb = gb.reshape(-1);
+            // Multiply (Extend gy axis at (-1))
+            gb = Matmul(Swapaxes(a, -1, -2), ExpandDims(gy0, -1));
+            // Shrink the last dim (b is vector)
+            gb = gb.reshape(-1);
         } else {
             gb = SumTo(Matmul(Swapaxes(a, -1, -2), gy0), b.shape());
         }
@@ -1032,9 +1033,9 @@ struct MatmulSubst : public Function::Substance {
 };
 
 // Basic math operators
-struct AbsSubst : public Function::Substance {
-    AbsSubst() : Substance(1, 1, {0}, {}) {}
-    virtual ~AbsSubst() {}
+struct AbsSubset : public Function::Subsetance {
+    AbsSubset() : Subsetance(1, 1, {0}, {}) {}
+    virtual ~AbsSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {Abs(x[0])};
     }
@@ -1044,10 +1045,10 @@ struct AbsSubst : public Function::Substance {
     }
 };
 
-struct ClipSubst : public Function::Substance {
-    ClipSubst(float x_min_, float x_max_)
-        : Substance(1, 1, {0}, {}), x_min(x_min_), x_max(x_max_) {}
-    virtual ~ClipSubst() {}
+struct ClipSubset : public Function::Subsetance {
+    ClipSubset(float x_min_, float x_max_)
+        : Subsetance(1, 1, {0}, {}), x_min(x_min_), x_max(x_max_) {}
+    virtual ~ClipSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {Clip(x[0], x_min, x_max)};
     }
@@ -1059,9 +1060,9 @@ struct ClipSubst : public Function::Substance {
     float x_min, x_max;
 };
 
-struct SqrtSubst : public Function::Substance {
-    SqrtSubst() : Substance(1, 1, {}, {0}) {}
-    virtual ~SqrtSubst() {}
+struct SqrtSubset : public Function::Subsetance {
+    SqrtSubset() : Subsetance(1, 1, {}, {0}) {}
+    virtual ~SqrtSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {Sqrt(x[0])};
     }
@@ -1071,9 +1072,9 @@ struct SqrtSubst : public Function::Substance {
     }
 };
 
-struct ExpSubst : public Function::Substance {
-    ExpSubst() : Substance(1, 1, {}, {0}) {}
-    virtual ~ExpSubst() {}
+struct ExpSubset : public Function::Subsetance {
+    ExpSubset() : Subsetance(1, 1, {}, {0}) {}
+    virtual ~ExpSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {Exp(x[0])};
     }
@@ -1083,9 +1084,9 @@ struct ExpSubst : public Function::Substance {
     }
 };
 
-struct LogSubst : public Function::Substance {
-    LogSubst() : Substance(1, 1, {0}, {}) {}
-    virtual ~LogSubst() {}
+struct LogSubset : public Function::Subsetance {
+    LogSubset() : Subsetance(1, 1, {0}, {}) {}
+    virtual ~LogSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {Log(x[0])};
     }
@@ -1095,9 +1096,9 @@ struct LogSubst : public Function::Substance {
     }
 };
 
-struct SquareSubst : public Function::Substance {
-    SquareSubst() : Substance(1, 1, {0}, {}) {}
-    virtual ~SquareSubst() {}
+struct SquareSubset : public Function::Subsetance {
+    SquareSubset() : Subsetance(1, 1, {0}, {}) {}
+    virtual ~SquareSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {Square(x[0])};
     }
@@ -1107,9 +1108,9 @@ struct SquareSubst : public Function::Substance {
     }
 };
 
-struct PowerSubst : public Function::Substance {
-    PowerSubst() : Substance(2, 1, {0, 1}, {0}) {}
-    virtual ~PowerSubst() {}
+struct PowerSubset : public Function::Subsetance {
+    PowerSubset() : Subsetance(2, 1, {0, 1}, {0}) {}
+    virtual ~PowerSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {Power(x[0], x[1])};
     }
@@ -1119,9 +1120,9 @@ struct PowerSubst : public Function::Substance {
     }
 };
 
-struct PowerFloatSubst : public Function::Substance {
-    PowerFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
-    virtual ~PowerFloatSubst() {}
+struct PowerFloatSubset : public Function::Subsetance {
+    PowerFloatSubset(float c_) : Subsetance(1, 1, {0}, {}), c(c_) {}
+    virtual ~PowerFloatSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {Power(x[0], c)};
     }
@@ -1132,9 +1133,9 @@ struct PowerFloatSubst : public Function::Substance {
     const float c;
 };
 
-struct PowerFromFloatSubst : public Function::Substance {
-    PowerFromFloatSubst(float c_) : Substance(1, 1, {0}, {0}), c(c_) {}
-    virtual ~PowerFromFloatSubst() {}
+struct PowerFromFloatSubset : public Function::Subsetance {
+    PowerFromFloatSubset(float c_) : Subsetance(1, 1, {0}, {0}), c(c_) {}
+    virtual ~PowerFromFloatSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {Power(c, x[0])};
     }
@@ -1145,9 +1146,9 @@ struct PowerFromFloatSubst : public Function::Substance {
 };
 
 // Trigonometric functions
-struct SinSubst : public Function::Substance {
-    SinSubst() : Substance(1, 1, {0}, {}) {}
-    virtual ~SinSubst() {}
+struct SinSubset : public Function::Subsetance {
+    SinSubset() : Subsetance(1, 1, {0}, {}) {}
+    virtual ~SinSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {Sin(x[0])};
     }
@@ -1157,9 +1158,9 @@ struct SinSubst : public Function::Substance {
     }
 };
 
-struct CosSubst : public Function::Substance {
-    CosSubst() : Substance(1, 1, {0}, {}) {}
-    virtual ~CosSubst() {}
+struct CosSubset : public Function::Subsetance {
+    CosSubset() : Subsetance(1, 1, {0}, {}) {}
+    virtual ~CosSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {Cos(x[0])};
     }
@@ -1169,9 +1170,9 @@ struct CosSubst : public Function::Substance {
     }
 };
 
-struct TanSubst : public Function::Substance {
-    TanSubst() : Substance(1, 1, {0}, {}) {}
-    virtual ~TanSubst() {}
+struct TanSubset : public Function::Subsetance {
+    TanSubset() : Subsetance(1, 1, {0}, {}) {}
+    virtual ~TanSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {Tan(x[0])};
     }
@@ -1182,9 +1183,9 @@ struct TanSubst : public Function::Substance {
 };
 
 // Inverse trigonometric functions
-struct ArcSinSubst : public Function::Substance {
-    ArcSinSubst() : Substance(1, 1, {0}, {}) {}
-    virtual ~ArcSinSubst() {}
+struct ArcSinSubset : public Function::Subsetance {
+    ArcSinSubset() : Subsetance(1, 1, {0}, {}) {}
+    virtual ~ArcSinSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {ArcSin(x[0])};
     }
@@ -1194,9 +1195,9 @@ struct ArcSinSubst : public Function::Substance {
     }
 };
 
-struct ArcCosSubst : public Function::Substance {
-    ArcCosSubst() : Substance(1, 1, {0}, {}) {}
-    virtual ~ArcCosSubst() {}
+struct ArcCosSubset : public Function::Subsetance {
+    ArcCosSubset() : Subsetance(1, 1, {0}, {}) {}
+    virtual ~ArcCosSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {ArcCos(x[0])};
     }
@@ -1206,9 +1207,9 @@ struct ArcCosSubst : public Function::Substance {
     }
 };
 
-struct ArcTanSubst : public Function::Substance {
-    ArcTanSubst() : Substance(1, 1, {0}, {}) {}
-    virtual ~ArcTanSubst() {}
+struct ArcTanSubset : public Function::Subsetance {
+    ArcTanSubset() : Subsetance(1, 1, {0}, {}) {}
+    virtual ~ArcTanSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {ArcTan(x[0])};
     }
@@ -1218,9 +1219,9 @@ struct ArcTanSubst : public Function::Substance {
     }
 };
 
-struct ArcTan2Subst : public Function::Substance {
-    ArcTan2Subst() : Substance(2, 1, {0, 1}, {}) {}
-    virtual ~ArcTan2Subst() {}
+struct ArcTan2Subset : public Function::Subsetance {
+    ArcTan2Subset() : Subsetance(2, 1, {0, 1}, {}) {}
+    virtual ~ArcTan2Subset() {}
     virtual NdArrays forward(InNd x) override {
         return {ArcTan2(x[0], x[1])};
     }
@@ -1233,9 +1234,9 @@ struct ArcTan2Subst : public Function::Substance {
     }
 };
 
-struct ArcTan2FloatSubst : public Function::Substance {
-    ArcTan2FloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
-    virtual ~ArcTan2FloatSubst() {}
+struct ArcTan2FloatSubset : public Function::Subsetance {
+    ArcTan2FloatSubset(float c_) : Subsetance(1, 1, {0}, {}), c(c_) {}
+    virtual ~ArcTan2FloatSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {ArcTan2(x[0], c)};
     }
@@ -1246,9 +1247,9 @@ struct ArcTan2FloatSubst : public Function::Substance {
     const float c;
 };
 
-struct ArcTan2FromFloatSubst : public Function::Substance {
-    ArcTan2FromFloatSubst(float c_) : Substance(1, 1, {0}, {}), c(c_) {}
-    virtual ~ArcTan2FromFloatSubst() {}
+struct ArcTan2FromFloatSubset : public Function::Subsetance {
+    ArcTan2FromFloatSubset(float c_) : Subsetance(1, 1, {0}, {}), c(c_) {}
+    virtual ~ArcTan2FromFloatSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {ArcTan2(c, x[0])};
     }
@@ -1257,6 +1258,73 @@ struct ArcTan2FromFloatSubst : public Function::Substance {
         return {-c * gy[0] / ((c * c) + Square(x[0]))};
     }
     const float c;
+};
+
+// Axis functions
+struct SumSubset : public Function::Subsetance {
+    SumSubset(const Axis& axes_, bool keepdims_)
+        : Subsetance(1, 1, {}, {}), axes(axes_), keepdims(keepdims_) {}
+    virtual ~SumSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        x0_shape = x[0].shape();
+        return {Sum(x[0], axes, keepdims)};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        NdArray gx = gy[0];
+        const int ndim = static_cast<int>(x0_shape.size());
+        if (!(ndim == 0 || axes.empty() || keepdims)) {
+            // Normalize axis
+            Axis actual_axis;
+            for (auto&& axis : axes) {
+                actual_axis.push_back(0 <= axis ? axis : axis + ndim);
+            }
+            std::sort(actual_axis.begin(), actual_axis.end());
+            // Reconstruct shape
+            Shape shape = gx.shape();
+            for (auto&& axis : actual_axis) {
+                shape.insert(shape.begin() + axis, 1);
+            }
+            // Reshape
+            gx = gx.reshape(shape);
+        }
+        // Broadcast
+        return {BroadcastTo(gx, x0_shape)};
+    }
+    const Axis axes;
+    const bool keepdims;
+    Shape x0_shape;
+};
+
+struct MeanSubset : public Function::Subsetance {
+    MeanSubset(const Axis& axes_, bool keepdims_)
+        : Subsetance(1, 1, {0}, {}), sum_subset(axes_, keepdims_) {}
+    virtual ~MeanSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        // Compute multiplier for backward
+        if (sum_subset.axes.empty()) {
+            multiplier = 1.f / static_cast<float>(x[0].size());
+        } else {
+            float divider = 1.f;
+            const Shape& x_shape = x[0].shape();
+            for (auto&& axis : sum_subset.axes) {
+                divider *= x_shape[static_cast<size_t>(axis)];
+            }
+            multiplier = 1.f / divider;
+        }
+        // Forward
+        NdArrays rets = sum_subset.forward(x);
+        rets[0] *= multiplier;
+        return rets;
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        // Backward
+        NdArrays rets = sum_subset.backward(x, y, gy);
+        rets[0] *= multiplier;
+        return rets;
+    }
+    SumSubset sum_subset;
+    float multiplier = 0.f;
 };
 
 // ------------------------------- Helper Class --------------------------------
@@ -1273,72 +1341,72 @@ public:
 // ----------------------------- Function Wrapping -----------------------------
 // Single
 Variable Positive(const Variable& x) {
-    return FuncImpl<PositiveSubst>()({x})[0];
+    return FuncImpl<PositiveSubset>()({x})[0];
 }
 
 Variable Negative(const Variable& x) {
-    return FuncImpl<NegativeSubst>()({x})[0];
+    return FuncImpl<NegativeSubset>()({x})[0];
 }
 
 // Arithmetic (Variable, Variable)
 Variable Add(const Variable& lhs, const Variable& rhs) {
-    return FuncImpl<AddSubst>()({lhs, rhs})[0];
+    return FuncImpl<AddSubset>()({lhs, rhs})[0];
 }
 
 Variable Subtract(const Variable& lhs, const Variable& rhs) {
-    return FuncImpl<SubtractSubst>()({lhs, rhs})[0];
+    return FuncImpl<SubtractSubset>()({lhs, rhs})[0];
 }
 
 Variable Multiply(const Variable& lhs, const Variable& rhs) {
-    return FuncImpl<MultiplySubst>()({lhs, rhs})[0];
+    return FuncImpl<MultiplySubset>()({lhs, rhs})[0];
 }
 
 Variable Divide(const Variable& lhs, const Variable& rhs) {
-    return FuncImpl<DivideSubst>()({lhs, rhs})[0];
+    return FuncImpl<DivideSubset>()({lhs, rhs})[0];
 }
 
 // Arithmetic (Variable, float)
 Variable Add(const Variable& lhs, float rhs) {
-    return FuncImpl<AddFloatSubst>(rhs)({lhs})[0];
+    return FuncImpl<AddFloatSubset>(rhs)({lhs})[0];
 }
 
 Variable Subtract(const Variable& lhs, float rhs) {
-    return FuncImpl<SubtractFloatSubst>(rhs)({lhs})[0];
+    return FuncImpl<SubtractFloatSubset>(rhs)({lhs})[0];
 }
 
 Variable Multiply(const Variable& lhs, float rhs) {
-    return FuncImpl<MultiplyFloatSubst>(rhs)({lhs})[0];
+    return FuncImpl<MultiplyFloatSubset>(rhs)({lhs})[0];
 }
 
 Variable Divide(const Variable& lhs, float rhs) {
-    return FuncImpl<DivideFloatSubst>(rhs)({lhs})[0];
+    return FuncImpl<DivideFloatSubset>(rhs)({lhs})[0];
 }
 
 // Arithmetic (float, Variable)
 Variable Add(float lhs, const Variable& rhs) {
-    return FuncImpl<AddFloatSubst>(lhs)({rhs})[0];
+    return FuncImpl<AddFloatSubset>(lhs)({rhs})[0];
 }
 
 Variable Subtract(float lhs, const Variable& rhs) {
-    return FuncImpl<SubtractFromFloatSubst>(lhs)({rhs})[0];
+    return FuncImpl<SubtractFromFloatSubset>(lhs)({rhs})[0];
 }
 
 Variable Multiply(float lhs, const Variable& rhs) {
-    return FuncImpl<MultiplyFloatSubst>(lhs)({rhs})[0];
+    return FuncImpl<MultiplyFloatSubset>(lhs)({rhs})[0];
 }
 
 Variable Divide(float lhs, const Variable& rhs) {
-    return FuncImpl<DivideFromFloatSubst>(lhs)({rhs})[0];
+    return FuncImpl<DivideFromFloatSubset>(lhs)({rhs})[0];
 }
 
 // Matrix operators
 Variable Matmul(const Variable& lhs, const Variable& rhs) {
-    return FuncImpl<MatmulSubst>()({lhs, rhs})[0];
+    return FuncImpl<MatmulSubset>()({lhs, rhs})[0];
 }
 
 // Basic math operators
 Variable Abs(const Variable& x) {
-    return FuncImpl<AbsSubst>()({x})[0];
+    return FuncImpl<AbsSubset>()({x})[0];
 }
 
 Variable Sign(const Variable& x) {
@@ -1354,73 +1422,82 @@ Variable Floor(const Variable& x) {
 }
 
 Variable Clip(const Variable& x, float x_min, float x_max) {
-    return FuncImpl<ClipSubst>(x_min, x_max)({x})[0];
+    return FuncImpl<ClipSubset>(x_min, x_max)({x})[0];
 }
 
 Variable Sqrt(const Variable& x) {
-    return FuncImpl<SqrtSubst>()({x})[0];
+    return FuncImpl<SqrtSubset>()({x})[0];
 }
 
 Variable Exp(const Variable& x) {
-    return FuncImpl<ExpSubst>()({x})[0];
+    return FuncImpl<ExpSubset>()({x})[0];
 }
 
 Variable Log(const Variable& x) {
-    return FuncImpl<LogSubst>()({x})[0];
+    return FuncImpl<LogSubset>()({x})[0];
 }
 
 Variable Square(const Variable& x) {
-    return FuncImpl<SquareSubst>()({x})[0];
+    return FuncImpl<SquareSubset>()({x})[0];
 }
 
 Variable Power(const Variable& x, const Variable& y) {
-    return FuncImpl<PowerSubst>()({x, y})[0];
+    return FuncImpl<PowerSubset>()({x, y})[0];
 }
 
 Variable Power(const Variable& x, float y) {
-    return FuncImpl<PowerFloatSubst>(y)({x})[0];
+    return FuncImpl<PowerFloatSubset>(y)({x})[0];
 }
 
 Variable Power(float x, const Variable& y) {
-    return FuncImpl<PowerFromFloatSubst>(x)({y})[0];
+    return FuncImpl<PowerFromFloatSubset>(x)({y})[0];
 }
 
 // Trigonometric functions
 Variable Sin(const Variable& x) {
-    return FuncImpl<SinSubst>()({x})[0];
+    return FuncImpl<SinSubset>()({x})[0];
 }
 
 Variable Cos(const Variable& x) {
-    return FuncImpl<CosSubst>()({x})[0];
+    return FuncImpl<CosSubset>()({x})[0];
 }
 
 Variable Tan(const Variable& x) {
-    return FuncImpl<TanSubst>()({x})[0];
+    return FuncImpl<TanSubset>()({x})[0];
 }
 
 // Inverse trigonometric functions
 Variable ArcSin(const Variable& x) {
-    return FuncImpl<ArcSinSubst>()({x})[0];
+    return FuncImpl<ArcSinSubset>()({x})[0];
 }
 
 Variable ArcCos(const Variable& x) {
-    return FuncImpl<ArcCosSubst>()({x})[0];
+    return FuncImpl<ArcCosSubset>()({x})[0];
 }
 
 Variable ArcTan(const Variable& x) {
-    return FuncImpl<ArcTanSubst>()({x})[0];
+    return FuncImpl<ArcTanSubset>()({x})[0];
 }
 
 Variable ArcTan2(const Variable& y, const Variable& x) {
-    return FuncImpl<ArcTan2Subst>()({y, x})[0];
+    return FuncImpl<ArcTan2Subset>()({y, x})[0];
 }
 
 Variable ArcTan2(const Variable& y, float x) {
-    return FuncImpl<ArcTan2FloatSubst>(x)({y})[0];
+    return FuncImpl<ArcTan2FloatSubset>(x)({y})[0];
 }
 
 Variable ArcTan2(float y, const Variable& x) {
-    return FuncImpl<ArcTan2FromFloatSubst>(y)({x})[0];
+    return FuncImpl<ArcTan2FromFloatSubset>(y)({x})[0];
+}
+
+// Axis functions
+Variable Sum(const Variable& x, const Axis& axes, bool keepdims) {
+    return FuncImpl<SumSubset>(axes, keepdims)({x})[0];
+}
+
+Variable Mean(const Variable& x, const Axis& axes, bool keepdims) {
+    return FuncImpl<MeanSubset>(axes, keepdims)({x})[0];
 }
 
 }  // namespace F
