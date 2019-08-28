@@ -747,17 +747,40 @@ TEST_CASE("AutoGrad") {
     }
 
     // ---------------------------- Shape functions ----------------------------
-    SECTION("Where") {
-        // (Variable, Variable)
-        Variable v1 = {{-1.f, 0.f}, {1.f, 2.f}};
+    SECTION("Reshape") {
+        Variable v1 = NdArray::Arange(4).reshape(2, 2);
         Variable v2 = F::Reshape(v1, {2, 1, 2});
         v2.backward();
         CheckGrad(v1,
                      "[[1, 1],\n"
                      " [1, 1]]");
         CheckData(v2,
-                     "[[[-1, 0]],\n"
-                     " [[1, 2]]]");
+                     "[[[0, 1]],\n"
+                     " [[2, 3]]]");
+    }
+
+    SECTION("Squeeze") {
+        Variable v1 = NdArray::Arange(4).reshape(2, 1, 2);
+        Variable v2 = F::Squeeze(v1);
+        v2.backward();
+        CheckGrad(v1,
+                     "[[[1, 1]],\n"
+                     " [[1, 1]]]");
+        CheckData(v2,
+                     "[[0, 1],\n"
+                     " [2, 3]]");
+    }
+
+    SECTION("ExpandDims") {
+        Variable v1 = NdArray::Arange(4).reshape(2, 2);
+        Variable v2 = F::ExpandDims(v1, -2);
+        v2.backward();
+        CheckGrad(v1,
+                     "[[1, 1],\n"
+                     " [1, 1]]");
+        CheckData(v2,
+                     "[[[0, 1]],\n"
+                     " [[2, 3]]]");
     }
 
     // -------------------- Arithmetic functions (complex) ---------------------

@@ -217,6 +217,8 @@ Variable Where(const NdArray& cond, const Variable& x0, float x1);
 Variable Where(const NdArray& cond, float x0, const Variable& x1);
 // Shape functions
 Variable Reshape(const Variable& x, const Shape& shape);
+Variable Squeeze(const Variable& x, const Axis& axes = {});
+Variable ExpandDims(const Variable& x, int axis);
 
 }  // namespace F
 
@@ -1385,7 +1387,7 @@ struct ReshapeSubset : public Function::Subsetance {
         : Subsetance(1, 1, {}, {}), y_shape(shape) {}
     virtual ~ReshapeSubset() {}
     virtual NdArrays forward(InNd x) override {
-        x_shape = x[0].shape();
+        x_shape = x[0].shape();  // Store original shape
         return {Reshape(x[0], y_shape)};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
@@ -1393,6 +1395,36 @@ struct ReshapeSubset : public Function::Subsetance {
         return {Reshape(gy[0], x_shape)};
     }
     const Shape y_shape;
+    Shape x_shape;
+};
+
+struct SqueezeSubset : public Function::Subsetance {
+    SqueezeSubset(const Axis& axes_) : Subsetance(1, 1, {}, {}), axes(axes_) {}
+    virtual ~SqueezeSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        x_shape = x[0].shape();  // Store original shape
+        return {Squeeze(x[0], axes)};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {Reshape(gy[0], x_shape)};
+    }
+    const Axis axes;
+    Shape x_shape;
+};
+
+struct ExpandDimsSubset : public Function::Subsetance {
+    ExpandDimsSubset(int axis_) : Subsetance(1, 1, {}, {}), axis(axis_) {}
+    virtual ~ExpandDimsSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        x_shape = x[0].shape();  // Store original shape
+        return {ExpandDims(x[0], axis)};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {Reshape(gy[0], x_shape)};
+    }
+    const int axis;
     Shape x_shape;
 };
 
@@ -1585,6 +1617,14 @@ Variable Where(const NdArray& cond, float x0, const Variable& x1) {
 // Shape functions
 Variable Reshape(const Variable& x, const Shape& shape) {
     return FuncImpl<ReshapeSubset>(shape)({x})[0];
+}
+
+Variable Squeeze(const Variable& x, const Axis& axes) {
+    return FuncImpl<SqueezeSubset>(axes)({x})[0];
+}
+
+Variable ExpandDims(const Variable& x, int axis) {
+    return FuncImpl<ExpandDimsSubset>(axis)({x})[0];
 }
 
 }  // namespace F
