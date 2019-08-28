@@ -715,6 +715,37 @@ TEST_CASE("AutoGrad") {
                   "   [28]]]]");
     }
 
+    // -------------------------- Logistic functions ---------------------------
+    SECTION("Where") {
+        auto cond = 2.f < NdArray::Arange(6.f).reshape(2, 3);
+        // (Variable, Variable)
+        Variable v0 = NdArray::Zeros(2, 1);
+        Variable v1 = NdArray::Ones(3);
+        Variable ret01 = F::Where(cond, v0, v1);
+        ret01.backward();
+        CheckGrad(v0, "[[0],\n"
+                     " [3]]");
+        CheckGrad(v1, "[1, 1, 1]");
+        CheckData(ret01,
+                     "[[1, 1, 1],\n"
+                     " [0, 0, 0]]");
+        // (Variable, float)
+        Variable ret0 = F::Where(cond, v0, 1.f);
+        ret0.backward();
+        CheckGrad(v0, "[[0],\n"
+                     " [3]]");
+        CheckData(ret0,
+                     "[[1, 1, 1],\n"
+                     " [0, 0, 0]]");
+        // (float, Variable)
+        Variable ret1 = F::Where(cond, 0.f, v1);
+        ret1.backward();
+        CheckGrad(v1, "[1, 1, 1]");
+        CheckData(ret1,
+                     "[[1, 1, 1],\n"
+                     " [0, 0, 0]]");
+    }
+
     // -------------------- Arithmetic functions (complex) ---------------------
     SECTION("Arithmetic (complex chain)") {
         Variable v1 = {1.f, 2.f};

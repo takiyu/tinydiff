@@ -784,6 +784,10 @@ Variable ArcTan2(float y, const Variable& x);
 // Axis functions
 Variable Sum(const Variable& x, const Axis& axes = {}, bool keepdims = false);
 Variable Mean(const Variable& x, const Axis& axes = {}, bool keepdims = false);
+// Logistic functions
+Variable Where(const NdArray& cond, const Variable& x0, const Variable& x1);
+Variable Where(const NdArray& cond, const Variable& x0, float x1);
+Variable Where(const NdArray& cond, float x0, const Variable& x1);
 
 }  // namespace F
 
@@ -5005,7 +5009,7 @@ size_t Function::getRank() const {
 
 namespace F {
 
-// Single
+// ---------------------------------- Single -----------------------------------
 struct PositiveSubset : public Function::Subsetance {
     PositiveSubset()
         : Subsetance(1, 1, {}, {}) {}  // n_inp, n_out, retain_indices
@@ -5031,7 +5035,7 @@ struct NegativeSubset : public Function::Subsetance {
     }
 };
 
-// Arithmetic (Variable, Variable)
+// ---------------------- Arithmetic (Variable, Variable) ----------------------
 struct AddSubset : public Function::Subsetance {
     AddSubset() : Subsetance(2, 1, {0, 1}, {}) {}
     virtual ~AddSubset() {}
@@ -5083,7 +5087,7 @@ struct DivideSubset : public Function::Subsetance {
     }
 };
 
-// Arithmetic (Variable, float)
+// ------------------------ Arithmetic (Variable, float) -----------------------
 struct AddFloatSubset : public Function::Subsetance {
     AddFloatSubset(float c_) : Subsetance(1, 1, {0}, {}), c(c_) {}
     virtual ~AddFloatSubset() {}
@@ -5137,7 +5141,7 @@ struct DivideFloatSubset : public Function::Subsetance {
     const float c;
 };
 
-// Arithmetic (float, Variable)
+// ----------------------- Arithmetic (float, Variable) ------------------------
 struct SubtractFromFloatSubset : public Function::Subsetance {
     SubtractFromFloatSubset(float c_) : Subsetance(1, 1, {0}, {}), c(c_) {}
     virtual ~SubtractFromFloatSubset() {}
@@ -5166,7 +5170,7 @@ struct DivideFromFloatSubset : public Function::Subsetance {
     const float c;
 };
 
-// Matrix operators
+// ----------------------------- Matrix operators ------------------------------
 struct MatmulSubset : public Function::Subsetance {
     MatmulSubset() : Subsetance(2, 1, {0, 1}, {}) {}
     virtual ~MatmulSubset() {}
@@ -5221,7 +5225,7 @@ struct MatmulSubset : public Function::Subsetance {
     }
 };
 
-// Basic math operators
+// --------------------------- Basic math operators ----------------------------
 struct AbsSubset : public Function::Subsetance {
     AbsSubset() : Subsetance(1, 1, {0}, {}) {}
     virtual ~AbsSubset() {}
@@ -5334,7 +5338,7 @@ struct PowerFromFloatSubset : public Function::Subsetance {
     const float c;
 };
 
-// Trigonometric functions
+// -------------------------  Trigonometric functions --------------------------
 struct SinSubset : public Function::Subsetance {
     SinSubset() : Subsetance(1, 1, {0}, {}) {}
     virtual ~SinSubset() {}
@@ -5371,7 +5375,7 @@ struct TanSubset : public Function::Subsetance {
     }
 };
 
-// Inverse trigonometric functions
+// ---------------------- Inverse trigonometric functions ----------------------
 struct ArcSinSubset : public Function::Subsetance {
     ArcSinSubset() : Subsetance(1, 1, {0}, {}) {}
     virtual ~ArcSinSubset() {}
@@ -5449,7 +5453,7 @@ struct ArcTan2FromFloatSubset : public Function::Subsetance {
     const float c;
 };
 
-// Axis functions
+// ------------------------------ Axis functions -------------------------------
 struct SumSubset : public Function::Subsetance {
     SumSubset(const Axis& axes_, bool keepdims_)
         : Subsetance(1, 1, {}, {}), axes(axes_), keepdims(keepdims_) {}
@@ -5514,6 +5518,58 @@ struct MeanSubset : public Function::Subsetance {
     }
     SumSubset sum_subset;
     float multiplier = 0.f;
+};
+
+// ---------------------------- Logistic functions -----------------------------
+struct WhereSubset : public Function::Subsetance {
+    WhereSubset(const NdArray& cond_) : Subsetance(2, 1, {}, {}), cond(cond_) {}
+    virtual ~WhereSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        x0_shape = x[0].shape();
+        x1_shape = x[1].shape();
+        return {Where(cond, x[0], x[1])};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {SumTo(Where(cond, gy[0], 0.f), x0_shape),
+                SumTo(Where(cond, 0.f, gy[0]), x1_shape)};
+    }
+    const NdArray& cond;
+    Shape x0_shape, x1_shape;
+};
+
+struct WhereRightFloatSubset : public Function::Subsetance {
+    WhereRightFloatSubset(const NdArray& cond_, float x1_)
+        : Subsetance(1, 1, {}, {}), cond(cond_), x1(x1_) {}
+    virtual ~WhereRightFloatSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        x0_shape = x[0].shape();
+        return {Where(cond, x[0], x1)};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {SumTo(Where(cond, gy[0], 0.f), x0_shape)};
+    }
+    const NdArray& cond;
+    Shape x0_shape;
+    const float x1;
+};
+
+struct WhereLeftFloatSubset : public Function::Subsetance {
+    WhereLeftFloatSubset(const NdArray& cond_, float x0_)
+        : Subsetance(1, 1, {}, {}), cond(cond_), x0(x0_) {}
+    virtual ~WhereLeftFloatSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        x1_shape = x[0].shape();
+        return {Where(cond, x0, x[0])};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {SumTo(Where(cond, 0.f, gy[0]), x1_shape)};
+    }
+    const NdArray& cond;
+    const float x0;
+    Shape x1_shape;
 };
 
 // ------------------------------- Helper Class --------------------------------
@@ -5687,6 +5743,19 @@ Variable Sum(const Variable& x, const Axis& axes, bool keepdims) {
 
 Variable Mean(const Variable& x, const Axis& axes, bool keepdims) {
     return FuncImpl<MeanSubset>(axes, keepdims)({x})[0];
+}
+
+// Logistic functions
+Variable Where(const NdArray& cond, const Variable& x0, const Variable& x1) {
+    return FuncImpl<WhereSubset>(cond)({x0, x1})[0];
+}
+
+Variable Where(const NdArray& cond, const Variable& x0, float x1) {
+    return FuncImpl<WhereRightFloatSubset>(cond, x1)({x0})[0];
+}
+
+Variable Where(const NdArray& cond, float x0, const Variable& x1) {
+    return FuncImpl<WhereLeftFloatSubset>(cond, x0)({x1})[0];
 }
 
 }  // namespace F
