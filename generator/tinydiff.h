@@ -1307,25 +1307,18 @@ struct MeanSubset : public Function::Subsetance {
         : Subsetance(1, 1, {0}, {}), sum_subset(axes_, keepdims_) {}
     virtual ~MeanSubset() {}
     virtual NdArrays forward(InNd x) override {
-        // Compute multiplier for backward
-        if (sum_subset.axes.empty()) {
-            multiplier = 1.f / static_cast<float>(x[0].size());
-        } else {
-            float divider = 1.f;
-            const Shape& x_shape = x[0].shape();
-            for (auto&& axis : sum_subset.axes) {
-                divider *= x_shape[static_cast<size_t>(axis)];
-            }
-            multiplier = 1.f / divider;
-        }
-        // Forward
+        // Forward for sum up
         NdArrays rets = sum_subset.forward(x);
+        // Compute multiplier
+        multiplier = static_cast<float>(rets[0].size()) / static_cast<float>(x[0].size());
+        // Apply multiplier
         rets[0] *= multiplier;
         return rets;
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         // Backward
         NdArrays rets = sum_subset.backward(x, y, gy);
+        // Apply multiplier
         rets[0] *= multiplier;
         return rets;
     }
