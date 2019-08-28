@@ -788,6 +788,10 @@ Variable Mean(const Variable& x, const Axis& axes = {}, bool keepdims = false);
 Variable Where(const NdArray& cond, const Variable& x0, const Variable& x1);
 Variable Where(const NdArray& cond, const Variable& x0, float x1);
 Variable Where(const NdArray& cond, float x0, const Variable& x1);
+// Shape functions
+Variable Reshape(const Variable& x, const Shape& shape);
+// NdArray Squeeze(const NdArray& x, const Axis& axes = {});
+// NdArray ExpandDims(const NdArray& x, int axis);
 
 }  // namespace F
 
@@ -5572,6 +5576,22 @@ struct WhereLeftFloatSubset : public Function::Subsetance {
     Shape x1_shape;
 };
 
+// ------------------------------ Shape functions ------------------------------
+struct ReshapeSubset : public Function::Subsetance {
+    ReshapeSubset(const Shape& shape) : Subsetance(1, 1, {}, {}), y_shape(shape) {}
+    virtual ~ReshapeSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        x_shape = x[0].shape();
+        return {Reshape(x[0], y_shape)};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {Reshape(gy[0], x_shape)};
+    }
+    const Shape y_shape;
+    Shape x_shape;
+};
+
 // ------------------------------- Helper Class --------------------------------
 // Helper to replace default substance with implemented one
 template <typename S>
@@ -5756,6 +5776,11 @@ Variable Where(const NdArray& cond, const Variable& x0, float x1) {
 
 Variable Where(const NdArray& cond, float x0, const Variable& x1) {
     return FuncImpl<WhereLeftFloatSubset>(cond, x0)({x1})[0];
+}
+
+// Shape functions
+Variable Reshape(const Variable& x, const Shape& shape) {
+    return FuncImpl<ReshapeSubset>(shape)({x})[0];
 }
 
 }  // namespace F

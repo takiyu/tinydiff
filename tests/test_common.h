@@ -746,6 +746,20 @@ TEST_CASE("AutoGrad") {
                      " [0, 0, 0]]");
     }
 
+    // ---------------------------- Shape functions ----------------------------
+    SECTION("Where") {
+        // (Variable, Variable)
+        Variable v1 = {{-1.f, 0.f}, {1.f, 2.f}};
+        Variable v2 = F::Reshape(v1, {2, 1, 2});
+        v2.backward();
+        CheckGrad(v1,
+                     "[[1, 1],\n"
+                     " [1, 1]]");
+        CheckData(v2,
+                     "[[[-1, 0]],\n"
+                     " [[1, 2]]]");
+    }
+
     // -------------------- Arithmetic functions (complex) ---------------------
     SECTION("Arithmetic (complex chain)") {
         Variable v1 = {1.f, 2.f};
