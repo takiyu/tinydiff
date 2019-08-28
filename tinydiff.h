@@ -5461,13 +5461,13 @@ struct SumSubset : public Function::Subsetance {
         : Subsetance(1, 1, {}, {}), axes(axes_), keepdims(keepdims_) {}
     virtual ~SumSubset() {}
     virtual NdArrays forward(InNd x) override {
-        x0_shape = x[0].shape();
+        x_shape = x[0].shape();
         return {Sum(x[0], axes, keepdims)};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         (void)x, (void)y;
         NdArray gx = gy[0];
-        const int ndim = static_cast<int>(x0_shape.size());
+        const int ndim = static_cast<int>(x_shape.size());
         if (!(ndim == 0 || axes.empty() || keepdims)) {
             // Normalize axis
             Axis actual_axis;
@@ -5476,19 +5476,19 @@ struct SumSubset : public Function::Subsetance {
             }
             std::sort(actual_axis.begin(), actual_axis.end());
             // Reconstruct shape
-            Shape shape = gx.shape();
+            Shape padded_shape = gx.shape();
             for (auto&& axis : actual_axis) {
-                shape.insert(shape.begin() + axis, 1);
+                padded_shape.insert(padded_shape.begin() + axis, 1);
             }
             // Reshape
-            gx = gx.reshape(shape);
+            gx = gx.reshape(padded_shape);
         }
         // Broadcast
-        return {BroadcastTo(gx, x0_shape)};
+        return {BroadcastTo(gx, x_shape)};
     }
     const Axis axes;
     const bool keepdims;
-    Shape x0_shape;
+    Shape x_shape;
 };
 
 struct MeanSubset : public Function::Subsetance {
@@ -5499,7 +5499,8 @@ struct MeanSubset : public Function::Subsetance {
         // Forward for sum up
         NdArrays rets = sum_subset.forward(x);
         // Compute multiplier
-        multiplier = static_cast<float>(rets[0].size()) / static_cast<float>(x[0].size());
+        multiplier = static_cast<float>(rets[0].size()) /
+                     static_cast<float>(x[0].size());
         // Apply multiplier
         rets[0] *= multiplier;
         return rets;
@@ -5569,7 +5570,8 @@ struct WhereLeftFloatSubset : public Function::Subsetance {
 
 // ------------------------------ Shape functions ------------------------------
 struct ReshapeSubset : public Function::Subsetance {
-    ReshapeSubset(const Shape& shape) : Subsetance(1, 1, {}, {}), y_shape(shape) {}
+    ReshapeSubset(const Shape& shape)
+        : Subsetance(1, 1, {}, {}), y_shape(shape) {}
     virtual ~ReshapeSubset() {}
     virtual NdArrays forward(InNd x) override {
         x_shape = x[0].shape();
