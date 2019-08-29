@@ -723,27 +723,29 @@ TEST_CASE("AutoGrad") {
         Variable v1 = NdArray::Ones(3);
         Variable ret01 = F::Where(cond, v0, v1);
         ret01.backward();
-        CheckGrad(v0, "[[0],\n"
-                     " [3]]");
+        CheckGrad(v0,
+                  "[[0],\n"
+                  " [3]]");
         CheckGrad(v1, "[1, 1, 1]");
         CheckData(ret01,
-                     "[[1, 1, 1],\n"
-                     " [0, 0, 0]]");
+                  "[[1, 1, 1],\n"
+                  " [0, 0, 0]]");
         // (Variable, float)
         Variable ret0 = F::Where(cond, v0, 1.f);
         ret0.backward();
-        CheckGrad(v0, "[[0],\n"
-                     " [3]]");
+        CheckGrad(v0,
+                  "[[0],\n"
+                  " [3]]");
         CheckData(ret0,
-                     "[[1, 1, 1],\n"
-                     " [0, 0, 0]]");
+                  "[[1, 1, 1],\n"
+                  " [0, 0, 0]]");
         // (float, Variable)
         Variable ret1 = F::Where(cond, 0.f, v1);
         ret1.backward();
         CheckGrad(v1, "[1, 1, 1]");
         CheckData(ret1,
-                     "[[1, 1, 1],\n"
-                     " [0, 0, 0]]");
+                  "[[1, 1, 1],\n"
+                  " [0, 0, 0]]");
     }
 
     // ---------------------------- Shape functions ----------------------------
@@ -752,11 +754,11 @@ TEST_CASE("AutoGrad") {
         Variable v2 = F::Reshape(v1, {2, 1, 2});
         v2.backward();
         CheckGrad(v1,
-                     "[[1, 1],\n"
-                     " [1, 1]]");
+                  "[[1, 1],\n"
+                  " [1, 1]]");
         CheckData(v2,
-                     "[[[0, 1]],\n"
-                     " [[2, 3]]]");
+                  "[[[0, 1]],\n"
+                  " [[2, 3]]]");
     }
 
     SECTION("Squeeze") {
@@ -764,11 +766,11 @@ TEST_CASE("AutoGrad") {
         Variable v2 = F::Squeeze(v1);
         v2.backward();
         CheckGrad(v1,
-                     "[[[1, 1]],\n"
-                     " [[1, 1]]]");
+                  "[[[1, 1]],\n"
+                  " [[1, 1]]]");
         CheckData(v2,
-                     "[[0, 1],\n"
-                     " [2, 3]]");
+                  "[[0, 1],\n"
+                  " [2, 3]]");
     }
 
     SECTION("ExpandDims") {
@@ -776,11 +778,99 @@ TEST_CASE("AutoGrad") {
         Variable v2 = F::ExpandDims(v1, -2);
         v2.backward();
         CheckGrad(v1,
-                     "[[1, 1],\n"
-                     " [1, 1]]");
+                  "[[1, 1],\n"
+                  " [1, 1]]");
         CheckData(v2,
-                     "[[[0, 1]],\n"
-                     " [[2, 3]]]");
+                  "[[[0, 1]],\n"
+                  " [[2, 3]]]");
+    }
+
+    // --------------------------- Grouping functions --------------------------
+    SECTION("Function Stack") {
+        Variable v1 = NdArray::Arange(6.f).reshape(2, 3);
+        Variable v2 = NdArray::Arange(6.f).reshape(2, 3) + 1.f;
+        // Axis 0
+        Variable ret0 = F::Stack({v1, v2}, 0);
+        ret0.backward();
+        CheckGrad(v1,
+                  "[[1, 1, 1],\n"
+                  " [1, 1, 1]]");
+        CheckGrad(v2,
+                  "[[1, 1, 1],\n"
+                  " [1, 1, 1]]");
+        CheckData(ret0,
+                  "[[[0, 1, 2],\n"
+                  "  [3, 4, 5]],\n"
+                  " [[1, 2, 3],\n"
+                  "  [4, 5, 6]]]");
+        // Axis 1
+        Variable ret1 = F::Stack({v1, v2}, 1);
+        ret1.backward();
+        CheckGrad(v1,
+                  "[[1, 1, 1],\n"
+                  " [1, 1, 1]]");
+        CheckGrad(v2,
+                  "[[1, 1, 1],\n"
+                  " [1, 1, 1]]");
+        CheckData(ret1,
+                  "[[[0, 1, 2],\n"
+                  "  [1, 2, 3]],\n"
+                  " [[3, 4, 5],\n"
+                  "  [4, 5, 6]]]");
+        // Axis 2
+        Variable ret2 = F::Stack({v1, v2}, 2);
+        ret2.backward();
+        CheckGrad(v1,
+                  "[[1, 1, 1],\n"
+                  " [1, 1, 1]]");
+        CheckGrad(v2,
+                  "[[1, 1, 1],\n"
+                  " [1, 1, 1]]");
+        CheckData(ret2,
+                  "[[[0, 1],\n"
+                  "  [1, 2],\n"
+                  "  [2, 3]],\n"
+                  " [[3, 4],\n"
+                  "  [4, 5],\n"
+                  "  [5, 6]]]");
+    }
+
+    SECTION("Function Separate") {
+        Variable v1 = NdArray::Arange(6.f).reshape(2, 3);
+        // Axis 0 (from left)
+        auto ret0 = F::Separate(v1, 0);
+        ret0[0].backward();
+        CHECK(ret0.size() == 2);
+        CheckGrad(v1,
+                  "[[1, 1, 1],\n"
+                  " [1, 1, 1]]");
+        CheckData(ret0[0], "[0, 1, 2]");
+        CheckData(ret0[1], "[3, 4, 5]");
+        // Axis 0 (from right)
+        ret0[1].backward();
+        CheckGrad(v1,
+                  "[[1, 1, 1],\n"
+                  " [1, 1, 1]]");
+        // Axis 1 (from left)
+        auto ret1 = F::Separate(v1, 1);
+        ret1[0].backward();
+        CHECK(ret1.size() == 3);
+        CheckGrad(v1,
+                  "[[1, 1, 1],\n"
+                  " [1, 1, 1]]");
+        CheckData(ret1[0], "[0, 3]");
+        CheckData(ret1[1], "[1, 4]");
+        CheckData(ret1[2], "[2, 5]");
+        // Axis 0 (from middle)
+        ret1[1].backward();
+        CheckGrad(v1,
+                  "[[1, 1, 1],\n"
+                  " [1, 1, 1]]");
+        // Axis 0 (from right)
+        ret1[2].backward();
+        CheckGrad(v1,
+                  "[[1, 1, 1],\n"
+                  " [1, 1, 1]]");
     }
 
     // -------------------- Arithmetic functions (complex) ---------------------

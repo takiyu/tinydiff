@@ -401,6 +401,7 @@ NdArray Stack(const std::vector<NdArray>& xs, int axis = 0);
 NdArray Concatenate(const std::vector<NdArray>& xs, int axis = 0);
 std::vector<NdArray> Split(const NdArray& x, int n_section, int axis = 0);
 std::vector<NdArray> Split(const NdArray& x, const Index& idxs, int axis = 0);
+std::vector<NdArray> Separate(const NdArray& x, int axis = 0);
 // Change view
 NdArray Transpose(const NdArray& x);
 NdArray Swapaxes(const NdArray& x, int axis1, int axis2);
@@ -792,6 +793,13 @@ Variable Where(const NdArray& cond, float x0, const Variable& x1);
 Variable Reshape(const Variable& x, const Shape& shape);
 Variable Squeeze(const Variable& x, const Axis& axes = {});
 Variable ExpandDims(const Variable& x, int axis);
+// Grouping functions
+Variable Stack(const std::vector<Variable>& xs, int axis = 0);
+// Variable Concatenate(const std::vector<Variable>& xs, int axis = 0);
+// std::vector<Variable> Split(const Variable& x, int n_section, int axis = 0);
+// std::vector<Variable> Split(const Variable& x, const Index& idxs, int axis =
+// 0);
+std::vector<Variable> Separate(const Variable& x, int axis = 0);
 
 }  // namespace F
 
@@ -2450,6 +2458,29 @@ static std::vector<NdArray> SplitNdArray(const NdArray& x, const Index& idxs,
     return SplitNdArrayImpl(x, idxs, axis);
 }
 
+static std::vector<NdArray> SeparateNdArray(const NdArray& x, int axis) {
+    // Check split axis
+    CheckSplitAxis(x, axis);
+    // Get splitting size (== dim size)
+    const int dim_size = x.shape()[static_cast<size_t>(axis)];
+
+    // Create splitting indices
+    Index idxs;
+    for (int sec_i = 1; sec_i < dim_size; sec_i++) {  // no first one
+        idxs.push_back(sec_i);
+    }
+
+    // Split by indices
+    std::vector<NdArray> res = SplitNdArrayImpl(x, idxs, axis);
+
+    // Squeeze
+    for (size_t i = 0; i < res.size(); i++) {
+        res[i] = Squeeze(res[i], {axis});
+    }
+
+    return res;
+}
+
 // -------------------- Utilities for NdArray (Change View) --------------------
 template <typename ViewF>
 static void ChangeNdArrayView(const NdArray::Iter& ret_data,
@@ -4036,6 +4067,10 @@ std::vector<NdArray> Split(const NdArray& x, const Index& idxs, int axis) {
     return SplitNdArray(x, idxs, axis);
 }
 
+std::vector<NdArray> Separate(const NdArray& x, int axis) {
+    return SeparateNdArray(x, axis);
+}
+
 // Change view
 NdArray Transpose(const NdArray& x) {
     return TransposeNdArray(x);
@@ -5617,6 +5652,35 @@ struct ExpandDimsSubset : public Function::Subsetance {
     Shape x_shape;
 };
 
+// ----------------------------- Grouping functions ----------------------------
+struct StackSubset : public Function::Subsetance {
+    StackSubset(int axis_, size_t n_xs)
+        : Subsetance(n_xs, 1, {}, {}), axis(axis_) {}
+    virtual ~StackSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        return {Stack(x, axis)};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return Separate(gy[0], axis);
+    }
+    const int axis;
+};
+
+struct SeparateSubset : public Function::Subsetance {
+    SeparateSubset(int axis_, size_t n_ys)
+        : Subsetance(1, n_ys, {}, {}), axis(axis_) {}
+    virtual ~SeparateSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        return Separate(x[0], axis);
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {Stack(gy, axis)};
+    }
+    const int axis;
+};
+
 // ------------------------------- Helper Class --------------------------------
 // Helper to replace default substance with implemented one
 template <typename S>
@@ -5814,6 +5878,20 @@ Variable Squeeze(const Variable& x, const Axis& axes) {
 
 Variable ExpandDims(const Variable& x, int axis) {
     return FuncImpl<ExpandDimsSubset>(axis)({x})[0];
+}
+
+// Grouping functions
+Variable Stack(const std::vector<Variable>& xs, int axis) {
+    return FuncImpl<StackSubset>(axis, xs.size())(xs)[0];
+}
+
+std::vector<Variable> Separate(const Variable& x, int axis) {
+    const size_t axis_l = static_cast<size_t>(axis);
+    if (axis < 0 || x.ndim() <= axis_l) {
+        throw std::runtime_error("Invalid axis to separate");
+    }
+    const size_t n_ys = static_cast<size_t>(x.shape()[axis_l]);
+    return FuncImpl<SeparateSubset>(axis, n_ys)({x});
 }
 
 }  // namespace F
