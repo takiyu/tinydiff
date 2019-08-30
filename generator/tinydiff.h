@@ -228,6 +228,13 @@ Variable Stack(const std::vector<Variable>& xs, int axis = 0);
 // std::vector<Variable> Split(const Variable& x, const Index& idxs, int axis =
 // 0);
 std::vector<Variable> Separate(const Variable& x, int axis = 0);
+// // Change view
+// Variable Transpose(const Variable& x);
+// Variable Swapaxes(const Variable& x, int axis1, int axis2);
+// Variable BroadcastTo(const Variable& x, const Shape& shape);
+// Variable SumTo(const Variable& x, const Shape& shape);
+// // Inverse
+// Variable Inv(const Variable& x);
 
 }  // namespace F
 
@@ -400,35 +407,6 @@ static Variables RetainVariables(const Variables& vs,
         }
     }
     return retained;
-}
-
-static NdArray SumTo(const NdArray& x, const Shape& shape) {
-    const Shape& x_shape = x.shape();
-    // No need
-    if (x_shape == shape) {
-        return x;
-    }
-    // Impossible
-    if (x_shape.size() < shape.size()) {
-        return x;
-    }
-
-    // Create reduction axis
-    Axis axis;
-    const size_t lead = x_shape.size() - shape.size();
-    for (size_t i = 0; i < lead; i++) {  // lead_axis
-        axis.push_back(static_cast<int>(i));
-    }
-    for (size_t i = 0; i < shape.size(); i++) {  // axis
-        if (shape[i] == 1) {
-            axis.push_back(static_cast<int>(i + lead));
-        }
-    }
-
-    // Reduce
-    NdArray ret = x.sum(axis);
-
-    return ret;
 }
 
 static Shape GedPaddedShape(const Shape& src_shape, const Shape& tgt_shape,
