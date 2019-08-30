@@ -166,9 +166,9 @@ public:
     NdArray cross(const NdArray& other) const;
 
     NdArray sum(const Axis& axes = {}, bool keepdims = false) const;
+    NdArray mean(const Axis& axes = {}, bool keepdims = false) const;
     NdArray min(const Axis& axes = {}, bool keepdims = false) const;
     NdArray max(const Axis& axes = {}, bool keepdims = false) const;
-    NdArray mean(const Axis& axes = {}, bool keepdims = false) const;
 
     // Parameters
     static constexpr int DOT_CACHE_SCALE = 10;  // depends on situation and CPU
@@ -380,9 +380,9 @@ NdArray ArcTan2(const NdArray& y, float x);
 NdArray ArcTan2(float y, const NdArray& x);
 // Axis functions
 NdArray Sum(const NdArray& x, const Axis& axes = {}, bool keepdims = false);
+NdArray Mean(const NdArray& x, const Axis& axes = {}, bool keepdims = false);
 NdArray Min(const NdArray& x, const Axis& axes = {}, bool keepdims = false);
 NdArray Max(const NdArray& x, const Axis& axes = {}, bool keepdims = false);
-NdArray Mean(const NdArray& x, const Axis& axes = {}, bool keepdims = false);
 // Logistic functions
 bool All(const NdArray& x);
 bool Any(const NdArray& x);
@@ -785,6 +785,8 @@ Variable ArcTan2(float y, const Variable& x);
 // Axis functions
 Variable Sum(const Variable& x, const Axis& axes = {}, bool keepdims = false);
 Variable Mean(const Variable& x, const Axis& axes = {}, bool keepdims = false);
+Variable Min(const Variable& x, const Axis& axes = {}, bool keepdims = false);
+Variable Max(const Variable& x, const Axis& axes = {}, bool keepdims = false);
 // Logistic functions
 Variable Where(const NdArray& cond, const Variable& x0, const Variable& x1);
 Variable Where(const NdArray& cond, const Variable& x0, float x1);
@@ -3188,16 +3190,16 @@ NdArray NdArray::sum(const Axis& axes, bool keepdims) const {
     return Sum(*this, axes, keepdims);
 }
 
+NdArray NdArray::mean(const Axis& axes, bool keepdims) const {
+    return Mean(*this, axes, keepdims);
+}
+
 NdArray NdArray::min(const Axis& axes, bool keepdims) const {
     return Min(*this, axes, keepdims);
 }
 
 NdArray NdArray::max(const Axis& axes, bool keepdims) const {
     return Max(*this, axes, keepdims);
-}
-
-NdArray NdArray::mean(const Axis& axes, bool keepdims) const {
-    return Mean(*this, axes, keepdims);
 }
 
 // ---------------------- Template Method Specializations ----------------------
@@ -3979,6 +3981,14 @@ NdArray Sum(const NdArray& x, const Axis& axes, bool keepdims) {
     return ReduceAxis(x, axes, keepdims, 0.f, std::plus<float>());
 }
 
+NdArray Mean(const NdArray& x, const Axis& axes, bool keepdims) {
+    if (x.size() == 0) {
+        return {std::numeric_limits<float>::quiet_NaN()};
+    }
+    auto&& sum = Sum(x, axes, keepdims);
+    return sum / static_cast<float>(x.size() / sum.size());
+}
+
 NdArray Min(const NdArray& x, const Axis& axes, bool keepdims) {
     return ReduceAxisNoEmpty(x, axes, keepdims,
                              std::numeric_limits<float>::max(),
@@ -3989,14 +3999,6 @@ NdArray Max(const NdArray& x, const Axis& axes, bool keepdims) {
     return ReduceAxisNoEmpty(x, axes, keepdims,
                              -std::numeric_limits<float>::max(),
                              [](float a, float b) { return std::max(a, b); });
-}
-
-NdArray Mean(const NdArray& x, const Axis& axes, bool keepdims) {
-    if (x.size() == 0) {
-        return {std::numeric_limits<float>::quiet_NaN()};
-    }
-    auto&& sum = Sum(x, axes, keepdims);
-    return sum / static_cast<float>(x.size() / sum.size());
 }
 
 bool All(const NdArray& x) {
@@ -4644,6 +4646,28 @@ static NdArray SumTo(const NdArray& x, const Shape& shape) {
     NdArray ret = x.sum(axis);
 
     return ret;
+}
+
+static Shape GedPaddedShape(const Shape& src_shape, const Shape& tgt_shape,
+                            const Axis& axes, bool keepdims) {
+    const int ndim = static_cast<int>(tgt_shape.size());
+    if (!(ndim == 0 || axes.empty() || keepdims)) {
+        // Normalize axis
+        Axis actual_axis;
+        for (auto&& axis : axes) {
+            actual_axis.push_back(0 <= axis ? axis : axis + ndim);
+        }
+        std::sort(actual_axis.begin(), actual_axis.end());
+        // Reconstruct shape
+        Shape padded_shape = src_shape;
+        for (auto&& axis : actual_axis) {
+            padded_shape.insert(padded_shape.begin() + axis, 1);
+        }
+        return padded_shape;
+    } else {
+        // No change
+        return src_shape;
+    }
 }
 
 // =============================================================================
@@ -5503,25 +5527,9 @@ struct SumSubset : public Function::Subsetance {
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         (void)x, (void)y;
-        NdArray gx = gy[0];
-        const int ndim = static_cast<int>(x_shape.size());
-        if (!(ndim == 0 || axes.empty() || keepdims)) {
-            // Normalize axis
-            Axis actual_axis;
-            for (auto&& axis : axes) {
-                actual_axis.push_back(0 <= axis ? axis : axis + ndim);
-            }
-            std::sort(actual_axis.begin(), actual_axis.end());
-            // Reconstruct shape
-            Shape padded_shape = gx.shape();
-            for (auto&& axis : actual_axis) {
-                padded_shape.insert(padded_shape.begin() + axis, 1);
-            }
-            // Reshape
-            gx = gx.reshape(padded_shape);
-        }
-        // Broadcast
-        return {BroadcastTo(gx, x_shape)};
+        const Shape& pad_shape =
+                GedPaddedShape(gy[0].shape(), x_shape, axes, keepdims);
+        return {BroadcastTo(gy[0].reshape(pad_shape), x_shape)};
     }
     const Axis axes;
     const bool keepdims;
@@ -5530,7 +5538,7 @@ struct SumSubset : public Function::Subsetance {
 
 struct MeanSubset : public Function::Subsetance {
     MeanSubset(const Axis& axes_, bool keepdims_)
-        : Subsetance(1, 1, {0}, {}), sum_subset(axes_, keepdims_) {}
+        : Subsetance(1, 1, {}, {}), sum_subset(axes_, keepdims_) {}
     virtual ~MeanSubset() {}
     virtual NdArrays forward(InNd x) override {
         // Forward for sum up
@@ -5551,6 +5559,36 @@ struct MeanSubset : public Function::Subsetance {
     }
     SumSubset sum_subset;
     float multiplier = 0.f;
+};
+
+template <bool IsMin>
+struct MinMaxSubset : public Function::Subsetance {
+    MinMaxSubset(const Axis& axes_, bool keepdims_)
+        : Subsetance(1, 1, {0}, {0}), axes(axes_), keepdims(keepdims_) {}
+    virtual ~MinMaxSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        return {fwd<IsMin>(x[0])};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        const Shape& pad_shape =
+                GedPaddedShape(gy[0].shape(), x[0].shape(), axes, keepdims);
+        NdArray cond = (x[0] == y[0].reshape(pad_shape));
+        NdArray gx = BroadcastTo(gy[0].reshape(pad_shape), cond.shape());
+        return {std::move(cond) * std::move(gx)};
+    }
+
+    // Forward operator
+    template <bool Cond>
+    NdArray fwd(const NdArray& x) {
+        return Min(x, axes, keepdims);  // true -> min
+    }
+    template <>
+    NdArray fwd<false>(const NdArray& x) {
+        return Max(x, axes, keepdims);  // false -> max
+    }
+
+    const Axis axes;
+    const bool keepdims;
 };
 
 // ---------------------------- Logistic functions -----------------------------
@@ -5852,6 +5890,14 @@ Variable Sum(const Variable& x, const Axis& axes, bool keepdims) {
 
 Variable Mean(const Variable& x, const Axis& axes, bool keepdims) {
     return FuncImpl<MeanSubset>(axes, keepdims)({x})[0];
+}
+
+Variable Min(const Variable& x, const Axis& axes, bool keepdims) {
+    return FuncImpl<MinMaxSubset<true>>(axes, keepdims)({x})[0];
+}
+
+Variable Max(const Variable& x, const Axis& axes, bool keepdims) {
+    return FuncImpl<MinMaxSubset<false>>(axes, keepdims)({x})[0];
 }
 
 // Logistic functions

@@ -665,6 +665,52 @@ TEST_CASE("AutoGrad") {
                   " [25, 28]]");
     }
 
+    SECTION("Axis (Min)") {
+        Variable v1 = NdArray::Arange(36.f).reshape(2, 3, 2, 3);
+        Variable v2 = F::Min(v1, {1, 3});
+        Variable v3 = v2 * 2.f;
+        v3.backward();
+        CheckGrad(v1,
+                  "[[[[2, 0, 0],\n"
+                  "   [2, 0, 0]],\n"
+                  "  [[0, 0, 0],\n"
+                  "   [0, 0, 0]],\n"
+                  "  [[0, 0, 0],\n"
+                  "   [0, 0, 0]]],\n"
+                  " [[[2, 0, 0],\n"
+                  "   [2, 0, 0]],\n"
+                  "  [[0, 0, 0],\n"
+                  "   [0, 0, 0]],\n"
+                  "  [[0, 0, 0],\n"
+                  "   [0, 0, 0]]]]");
+        CheckData(v2,
+                  "[[0, 3],\n"
+                  " [18, 21]]");
+    }
+
+    SECTION("Axis (Max)") {
+        Variable v1 = NdArray::Arange(36.f).reshape(2, 3, 2, 3);
+        Variable v2 = F::Max(v1, {1, 3});
+        Variable v3 = v2 * 2.f;
+        v3.backward();
+        CheckGrad(v1,
+                  "[[[[0, 0, 0],\n"
+                  "   [0, 0, 0]],\n"
+                  "  [[0, 0, 0],\n"
+                  "   [0, 0, 0]],\n"
+                  "  [[0, 0, 2],\n"
+                  "   [0, 0, 2]]],\n"
+                  " [[[0, 0, 0],\n"
+                  "   [0, 0, 0]],\n"
+                  "  [[0, 0, 0],\n"
+                  "   [0, 0, 0]],\n"
+                  "  [[0, 0, 2],\n"
+                  "   [0, 0, 2]]]]");
+        CheckData(v2,
+                  "[[14, 17],\n"
+                  " [32, 35]]");
+    }
+
     SECTION("Axis (Sum, keepdims)") {
         Variable v1 = NdArray::Arange(36.f).reshape(2, 3, 2, 3);
         Variable v2 = F::Sum(v1, {1, 3}, true);
@@ -713,6 +759,56 @@ TEST_CASE("AutoGrad") {
                   "   [10]]],\n"
                   " [[[25],\n"
                   "   [28]]]]");
+    }
+
+    SECTION("Axis (Min, keepdims)") {
+        Variable v1 = NdArray::Arange(36.f).reshape(2, 3, 2, 3);
+        Variable v2 = F::Min(v1, {1, 3}, true);
+        Variable v3 = v2 * 2.f;
+        v3.backward();
+        CheckGrad(v1,
+                  "[[[[2, 0, 0],\n"
+                  "   [2, 0, 0]],\n"
+                  "  [[0, 0, 0],\n"
+                  "   [0, 0, 0]],\n"
+                  "  [[0, 0, 0],\n"
+                  "   [0, 0, 0]]],\n"
+                  " [[[2, 0, 0],\n"
+                  "   [2, 0, 0]],\n"
+                  "  [[0, 0, 0],\n"
+                  "   [0, 0, 0]],\n"
+                  "  [[0, 0, 0],\n"
+                  "   [0, 0, 0]]]]");
+        CheckData(v2,
+                  "[[[[0],\n"
+                  "   [3]]],\n"
+                  " [[[18],\n"
+                  "   [21]]]]");
+    }
+
+    SECTION("Axis (Max, keepdims)") {
+        Variable v1 = NdArray::Arange(36.f).reshape(2, 3, 2, 3);
+        Variable v2 = F::Max(v1, {1, 3}, true);
+        Variable v3 = v2 * 2.f;
+        v3.backward();
+        CheckGrad(v1,
+                  "[[[[0, 0, 0],\n"
+                  "   [0, 0, 0]],\n"
+                  "  [[0, 0, 0],\n"
+                  "   [0, 0, 0]],\n"
+                  "  [[0, 0, 2],\n"
+                  "   [0, 0, 2]]],\n"
+                  " [[[0, 0, 0],\n"
+                  "   [0, 0, 0]],\n"
+                  "  [[0, 0, 0],\n"
+                  "   [0, 0, 0]],\n"
+                  "  [[0, 0, 2],\n"
+                  "   [0, 0, 2]]]]");
+        CheckData(v2,
+                  "[[[[14],\n"
+                  "   [17]]],\n"
+                  " [[[32],\n"
+                  "   [35]]]]");
     }
 
     // -------------------------- Logistic functions ---------------------------
