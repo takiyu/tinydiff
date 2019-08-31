@@ -406,6 +406,7 @@ std::vector<NdArray> Separate(const NdArray& x, int axis = 0);
 NdArray Transpose(const NdArray& x);
 NdArray Swapaxes(const NdArray& x, int axis1, int axis2);
 NdArray BroadcastTo(const NdArray& x, const Shape& shape);
+NdArray SumTo(const NdArray& x, const Shape& shape);
 // Inverse
 NdArray Inv(const NdArray& x);
 // ------------------------ In-place Operator Functions ------------------------
@@ -802,6 +803,13 @@ Variable Stack(const std::vector<Variable>& xs, int axis = 0);
 // std::vector<Variable> Split(const Variable& x, const Index& idxs, int axis =
 // 0);
 std::vector<Variable> Separate(const Variable& x, int axis = 0);
+// Change view
+Variable Transpose(const Variable& x);
+Variable Swapaxes(const Variable& x, int axis1, int axis2);
+Variable BroadcastTo(const Variable& x, const Shape& shape);
+Variable SumTo(const Variable& x, const Shape& shape);
+// // Inverse
+// Variable Inv(const Variable& x);
 
 }  // namespace F
 
@@ -2584,6 +2592,35 @@ static NdArray BroadcastToNdArray(const NdArray& x, const Shape& shape) {
             std::move(ret), x, [](float, float r) { return r; }, false);
 }
 
+static NdArray SumToNdArray(const NdArray& x, const Shape& shape) {
+    const Shape& x_shape = x.shape();
+    // No need
+    if (x_shape == shape) {
+        return x;
+    }
+    // Impossible
+    if (x_shape.size() < shape.size()) {
+        return x;
+    }
+
+    // Create reduction axis
+    Axis axis;
+    const size_t lead = x_shape.size() - shape.size();
+    for (size_t i = 0; i < lead; i++) {  // lead_axis
+        axis.push_back(static_cast<int>(i));
+    }
+    for (size_t i = 0; i < shape.size(); i++) {  // axis
+        if (shape[i] == 1) {
+            axis.push_back(static_cast<int>(i + lead));
+        }
+    }
+
+    // Reduce
+    NdArray ret = x.sum(axis);
+
+    return ret;
+}
+
 // ---------------------- Utilities for NdArray (Inverse) ----------------------
 static int CheckInversable(const Shape& shape) {
     if (shape.size() < 2) {
@@ -4086,6 +4123,10 @@ NdArray BroadcastTo(const NdArray& x, const Shape& shape) {
     return BroadcastToNdArray(x, shape);
 }
 
+NdArray SumTo(const NdArray& x, const Shape& shape) {
+    return SumToNdArray(x, shape);
+}
+
 // Inverse
 NdArray Inv(const NdArray& x) {
     return InvertNdArray(x);
@@ -4617,35 +4658,6 @@ static Variables RetainVariables(const Variables& vs,
         }
     }
     return retained;
-}
-
-static NdArray SumTo(const NdArray& x, const Shape& shape) {
-    const Shape& x_shape = x.shape();
-    // No need
-    if (x_shape == shape) {
-        return x;
-    }
-    // Impossible
-    if (x_shape.size() < shape.size()) {
-        return x;
-    }
-
-    // Create reduction axis
-    Axis axis;
-    const size_t lead = x_shape.size() - shape.size();
-    for (size_t i = 0; i < lead; i++) {  // lead_axis
-        axis.push_back(static_cast<int>(i));
-    }
-    for (size_t i = 0; i < shape.size(); i++) {  // axis
-        if (shape[i] == 1) {
-            axis.push_back(static_cast<int>(i + lead));
-        }
-    }
-
-    // Reduce
-    NdArray ret = x.sum(axis);
-
-    return ret;
 }
 
 static Shape GedPaddedShape(const Shape& src_shape, const Shape& tgt_shape,
@@ -5719,6 +5731,58 @@ struct SeparateSubset : public Function::Subsetance {
     const int axis;
 };
 
+// -------------------------------- Change view --------------------------------
+struct TransposeSubset : public Function::Subsetance {
+    TransposeSubset() : Subsetance(1, 1, {}, {}) {}
+    virtual ~TransposeSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        return {Transpose(x[0])};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {Transpose(gy[0])};
+    }
+};
+
+struct SwapaxesSubset : public Function::Subsetance {
+    SwapaxesSubset(int axis1_, int axis2_) : Subsetance(1, 1, {}, {}), axis1(axis1_), axis2(axis2_) {}
+    virtual ~SwapaxesSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        return {Swapaxes(x[0], axis1, axis2)};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {Swapaxes(gy[0], axis1, axis2)};
+    }
+    const int axis1, axis2;
+};
+
+struct BroadcastToSubset : public Function::Subsetance {
+    BroadcastToSubset(const Shape& shape_) : Subsetance(1, 1, {}, {}), shape(shape_) {}
+    virtual ~BroadcastToSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        return {BroadcastTo(x[0], shape)};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {SumTo(gy[0], shape)};
+    }
+    const Shape shape;
+};
+
+struct SumToSubset : public Function::Subsetance {
+    SumToSubset(const Shape& shape_) : Subsetance(1, 1, {}, {}), shape(shape_) {}
+    virtual ~SumToSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        return {SumTo(x[0], shape)};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {BroadcastTo(gy[0], shape)};
+    }
+    const Shape shape;
+};
+
 // ------------------------------- Helper Class --------------------------------
 // Helper to replace default substance with implemented one
 template <typename S>
@@ -5938,6 +6002,23 @@ std::vector<Variable> Separate(const Variable& x, int axis) {
     }
     const size_t n_ys = static_cast<size_t>(x.shape()[axis_l]);
     return FuncImpl<SeparateSubset>(axis, n_ys)({x});
+}
+
+// Change view
+Variable Transpose(const Variable& x) {
+    return FuncImpl<TransposeSubset>()({x})[0];
+}
+
+Variable Swapaxes(const Variable& x, int axis1, int axis2) {
+    return FuncImpl<SwapaxesSubset>(axis1, axis2)({x})[0];
+}
+
+Variable BroadcastTo(const Variable& x, const Shape& shape) {
+    return FuncImpl<BroadcastToSubset>(shape)({x})[0];
+}
+
+Variable SumTo(const Variable& x, const Shape& shape) {
+    return FuncImpl<SumToSubset>(shape)({x})[0];
 }
 
 }  // namespace F

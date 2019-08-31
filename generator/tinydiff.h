@@ -228,11 +228,11 @@ Variable Stack(const std::vector<Variable>& xs, int axis = 0);
 // std::vector<Variable> Split(const Variable& x, const Index& idxs, int axis =
 // 0);
 std::vector<Variable> Separate(const Variable& x, int axis = 0);
-// // Change view
-// Variable Transpose(const Variable& x);
-// Variable Swapaxes(const Variable& x, int axis1, int axis2);
-// Variable BroadcastTo(const Variable& x, const Shape& shape);
-// Variable SumTo(const Variable& x, const Shape& shape);
+// Change view
+Variable Transpose(const Variable& x);
+Variable Swapaxes(const Variable& x, int axis1, int axis2);
+Variable BroadcastTo(const Variable& x, const Shape& shape);
+Variable SumTo(const Variable& x, const Shape& shape);
 // // Inverse
 // Variable Inv(const Variable& x);
 
@@ -1480,6 +1480,58 @@ struct SeparateSubset : public Function::Subsetance {
     const int axis;
 };
 
+// -------------------------------- Change view --------------------------------
+struct TransposeSubset : public Function::Subsetance {
+    TransposeSubset() : Subsetance(1, 1, {}, {}) {}
+    virtual ~TransposeSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        return {Transpose(x[0])};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {Transpose(gy[0])};
+    }
+};
+
+struct SwapaxesSubset : public Function::Subsetance {
+    SwapaxesSubset(int axis1_, int axis2_) : Subsetance(1, 1, {}, {}), axis1(axis1_), axis2(axis2_) {}
+    virtual ~SwapaxesSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        return {Swapaxes(x[0], axis1, axis2)};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {Swapaxes(gy[0], axis1, axis2)};
+    }
+    const int axis1, axis2;
+};
+
+struct BroadcastToSubset : public Function::Subsetance {
+    BroadcastToSubset(const Shape& shape_) : Subsetance(1, 1, {}, {}), shape(shape_) {}
+    virtual ~BroadcastToSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        return {BroadcastTo(x[0], shape)};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {SumTo(gy[0], shape)};
+    }
+    const Shape shape;
+};
+
+struct SumToSubset : public Function::Subsetance {
+    SumToSubset(const Shape& shape_) : Subsetance(1, 1, {}, {}), shape(shape_) {}
+    virtual ~SumToSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        return {SumTo(x[0], shape)};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {BroadcastTo(gy[0], shape)};
+    }
+    const Shape shape;
+};
+
 // ------------------------------- Helper Class --------------------------------
 // Helper to replace default substance with implemented one
 template <typename S>
@@ -1699,6 +1751,23 @@ std::vector<Variable> Separate(const Variable& x, int axis) {
     }
     const size_t n_ys = static_cast<size_t>(x.shape()[axis_l]);
     return FuncImpl<SeparateSubset>(axis, n_ys)({x});
+}
+
+// Change view
+Variable Transpose(const Variable& x) {
+    return FuncImpl<TransposeSubset>()({x})[0];
+}
+
+Variable Swapaxes(const Variable& x, int axis1, int axis2) {
+    return FuncImpl<SwapaxesSubset>(axis1, axis2)({x})[0];
+}
+
+Variable BroadcastTo(const Variable& x, const Shape& shape) {
+    return FuncImpl<BroadcastToSubset>(shape)({x})[0];
+}
+
+Variable SumTo(const Variable& x, const Shape& shape) {
+    return FuncImpl<SumToSubset>(shape)({x})[0];
 }
 
 }  // namespace F
