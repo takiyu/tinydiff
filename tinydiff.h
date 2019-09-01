@@ -5841,13 +5841,15 @@ struct BroadcastToSubset : public Function::Subsetance {
         : Subsetance(1, 1, {}, {}), shape(shape_) {}
     virtual ~BroadcastToSubset() {}
     virtual NdArrays forward(InNd x) override {
+        x_shape = x[0].shape();
         return {BroadcastTo(x[0], shape)};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         (void)x, (void)y;
-        return {SumTo(gy[0], shape)};
+        return {SumTo(gy[0], x_shape)};
     }
     const Shape shape;
+    Shape x_shape;
 };
 
 struct SumToSubset : public Function::Subsetance {
@@ -5855,13 +5857,15 @@ struct SumToSubset : public Function::Subsetance {
         : Subsetance(1, 1, {}, {}), shape(shape_) {}
     virtual ~SumToSubset() {}
     virtual NdArrays forward(InNd x) override {
+        x_shape = x[0].shape();
         return {SumTo(x[0], shape)};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         (void)x, (void)y;
-        return {BroadcastTo(gy[0], shape)};
+        return {BroadcastTo(gy[0], x_shape)};
     }
     const Shape shape;
+    Shape x_shape;
 };
 
 // ------------------------------- Helper Class --------------------------------

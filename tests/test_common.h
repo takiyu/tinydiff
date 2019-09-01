@@ -1121,6 +1121,66 @@ TEST_CASE("AutoGrad") {
                   " [2, 2, 2]]");
     }
 
+    SECTION("Function Transpose") {
+        Variable v1 = NdArray::Arange(6.f).reshape(3, 2);
+        auto r0 = F::Transpose(v1);
+        (r0 * Variable(r0.data())).backward();
+        CheckGrad(v1,
+                     "[[0, 1],\n"
+                     " [2, 3],\n"
+                     " [4, 5]]");
+        CheckData(r0,
+                     "[[0, 2, 4],\n"
+                     " [1, 3, 5]]");
+    }
+
+    SECTION("Function Swapaxes") {
+        Variable v1 = NdArray::Arange(6.f).reshape(3, 2);
+        auto r0 = F::Swapaxes(v1, -1, -2);
+        (r0 * Variable(r0.data())).backward();
+        CheckGrad(v1,
+                     "[[0, 1],\n"
+                     " [2, 3],\n"
+                     " [4, 5]]");
+        CheckData(r0,
+                     "[[0, 2, 4],\n"
+                     " [1, 3, 5]]");
+    }
+
+    SECTION("Function BroadcastTo") {
+        Variable v1 = NdArray::Arange(3.f);
+        auto r0 = F::BroadcastTo(v1, {2, 3});
+        (r0 * Variable(NdArray::Arange(6.f).reshape(2, 3))).backward();
+        CheckGrad(v1, "[3, 5, 7]");
+        CheckData(r0,
+                     "[[0, 1, 2],\n"
+                     " [0, 1, 2]]");
+    }
+
+    SECTION("Function SumTo") {
+        Variable v1 = NdArray::Arange(6.f).reshape(2, 3);
+        auto r0 = F::SumTo(v1, {3});
+        (r0 * 2.f).backward();
+        CheckGrad(v1,
+                     "[[2, 2, 2],\n"
+                     " [2, 2, 2]]");
+        CheckData(r0, "[3, 5, 7]");
+
+        auto r1 = F::SumTo(v1, {2});
+        (r1 * 2.f).backward();
+        CheckGrad(v1,
+                     "[[2, 2, 2],\n"
+                     " [2, 2, 2]]");
+        CheckData(r1, "[3, 5, 7]");
+
+        auto r2 = F::SumTo(v1, {1});
+        (r2 * 2.f).backward();
+        CheckGrad(v1,
+                     "[[2, 2, 2],\n"
+                     " [2, 2, 2]]");
+        CheckData(r2, "[15]");
+    }
+
     // -------------------- Arithmetic functions (complex) ---------------------
     SECTION("Arithmetic (complex chain)") {
         Variable v1 = {1.f, 2.f};
