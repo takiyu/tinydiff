@@ -409,14 +409,14 @@ static Variables RetainVariables(const Variables& vs,
 }
 
 static Shape GedPaddedShape(const Shape& src_shape, const Shape& tgt_shape,
-                            const Axis& axes, bool keepdims) {
+                            const Axis& axes_raw, bool keepdims) {
     const size_t ndim = tgt_shape.size();
-    if (!(ndim == 0 || axes.empty() || keepdims)) {
-        // Resolve axis (`ResolveAxis` is in tinyndarray)
-        const Axis& actual_axis = ResolveAxis(axes, ndim, "Axis backward");
+    if (!(ndim == 0 || axes_raw.empty() || keepdims)) {
+        // Resolve axis (sort: on) (`ResolveAxis` is in tinyndarray)
+        const Axis& axes = ResolveAxis(axes_raw, ndim, "Axis backward", true);
         // Reconstruct shape
         Shape padded_shape = src_shape;
-        for (auto&& axis : actual_axis) {
+        for (auto&& axis : axes) {
             padded_shape.insert(padded_shape.begin() + axis, 1);
         }
         return padded_shape;
@@ -424,13 +424,6 @@ static Shape GedPaddedShape(const Shape& src_shape, const Shape& tgt_shape,
         // No change
         return src_shape;
     }
-}
-
-static auto PrepareSplit(const Shape& shape, int axis,
-                         const std::string& name) {
-    axis = ResolveAxis(axis, shape.size(), name);
-    const size_t n_ys = static_cast<size_t>(shape[static_cast<size_t>(axis)]);
-    return std::make_tuple(axis, n_ys);
 }
 
 // =============================================================================
@@ -1475,15 +1468,18 @@ struct ConcatenateSubset : public Function::Subsetance {
     virtual NdArrays forward(InNd x) override {
         // Store shapes for back
         shapes.clear();
-        for (size_t i = 0; i < x.size(); i++) {
-            shapes.push_back(x[i].shape());
+        shapes.reserve(x.size());
+        for (auto&& x_elem : x) {
+            shapes.push_back(x_elem.shape());
         }
         // Forward
         return {Concatenate(x, axis)};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         (void)x, (void)y;
-        const size_t axis_l = static_cast<size_t>(axis);
+        // Resolve axis
+        const size_t axis_l = static_cast<size_t>(
+                ResolveAxis(axis, shapes[0].size(), "Concat back"));
         // Create indices to split (Note: axis is checked by forwarding)
         Index idxs;
         int next_idx = 0;
@@ -1498,34 +1494,39 @@ struct ConcatenateSubset : public Function::Subsetance {
     std::vector<Shape> shapes;
 };
 
-struct SplitNSecSubset : public Function::Subsetance {
-    SplitNSecSubset(int n_section_, int axis_, size_t n_ys)
-        : Subsetance(1, n_ys, {}, {}), n_section(n_section_), axis(axis_) {}
-    virtual ~SplitNSecSubset() {}
+template <typename Param>
+struct SplitSubset : public Function::Subsetance {
+    SplitSubset(const Param& param_, int axis_, size_t n_ys)
+        : Subsetance(1, n_ys, {}, {}), param(param_), axis(axis_) {}
+    virtual ~SplitSubset() {}
     virtual NdArrays forward(InNd x) override {
-        return Split(x[0], n_section, axis);
+        // Forward
+        NdArrays y = Split(x[0], param, axis);
+        // Save shapes for backward
+        y_shapes.clear();
+        y_shapes.reserve(y.size());
+        for (auto&& y_elem : y) {
+            y_shapes.push_back(y_elem.shape());
+        }
+        return y;
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         (void)x, (void)y;
-        return {Concatenate(gy, axis)};
+        // Fill empty gradients
+        NdArrays grads;
+        for (size_t i = 0; i < gy.size(); i++) {
+            if (gy[i].empty()) {
+                grads.push_back(NdArray::Zeros(y_shapes[i]));
+            } else {
+                grads.push_back(gy[i]);
+            }
+        }
+        // Backward
+        return {Concatenate(grads, axis)};
     }
-    const int n_section;
+    Param param;
     const int axis;
-};
-
-struct SplitIdxsSubset : public Function::Subsetance {
-    SplitIdxsSubset(const Index& idxs_, int axis_, size_t n_ys)
-        : Subsetance(1, n_ys, {}, {}), idxs(idxs_), axis(axis_) {}
-    virtual ~SplitIdxsSubset() {}
-    virtual NdArrays forward(InNd x) override {
-        return Split(x[0], idxs, axis);
-    }
-    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
-        (void)x, (void)y;
-        return {Concatenate(gy, axis)};
-    }
-    const Index idxs;
-    const int axis;
+    std::vector<Shape> y_shapes;
 };
 
 struct SeparateSubset : public Function::Subsetance {
@@ -1533,13 +1534,28 @@ struct SeparateSubset : public Function::Subsetance {
         : Subsetance(1, n_ys, {}, {}), axis(axis_) {}
     virtual ~SeparateSubset() {}
     virtual NdArrays forward(InNd x) override {
-        return Separate(x[0], axis);
+        // Forward
+        NdArrays y = Separate(x[0], axis);
+        // Save shape for backward
+        y0_shape = y[0].shape();
+        return y;
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         (void)x, (void)y;
-        return {Stack(gy, axis)};
+        // Fill empty gradients
+        NdArrays grads;
+        for (size_t i = 0; i < gy.size(); i++) {
+            if (gy[i].empty()) {
+                grads.push_back(NdArray::Zeros(y0_shape));
+            } else {
+                grads.push_back(gy[i]);
+            }
+        }
+        // Backward
+        return {Stack(grads, axis)};
     }
     const int axis;
+    Shape y0_shape;
 };
 
 // -------------------------------- Change view --------------------------------
@@ -1814,20 +1830,22 @@ Variable Concatenate(const std::vector<Variable>& xs, int axis) {
 }
 
 std::vector<Variable> Split(const Variable& x, int n_section, int axis) {
-    auto&& ps = PrepareSplit(x.shape(), axis, "Split");
-    return FuncImpl<SplitNSecSubset>(n_section, std::get<0>(ps),
-                                     std::get<1>(ps))({x});
+    axis = ResolveAxis(axis, x.ndim(), "Split (n_section)");
+    const size_t n_ys = static_cast<size_t>(n_section);
+    return FuncImpl<SplitSubset<int>>(n_section, axis, n_ys)({x});
 }
 
 std::vector<Variable> Split(const Variable& x, const Index& idxs, int axis) {
-    auto&& ps = PrepareSplit(x.shape(), axis, "Split");
-    return FuncImpl<SplitIdxsSubset>(idxs, std::get<0>(ps),
-                                     std::get<1>(ps))({x});
+    axis = ResolveAxis(axis, x.ndim(), "Split (index)");
+    const size_t n_ys = idxs.size() + 1;
+    return FuncImpl<SplitSubset<Index>>(idxs, axis, n_ys)({x});
 }
 
 std::vector<Variable> Separate(const Variable& x, int axis) {
-    auto&& ps = PrepareSplit(x.shape(), axis, "Separate");
-    return FuncImpl<SeparateSubset>(std::get<0>(ps), std::get<1>(ps))({x});
+    axis = ResolveAxis(axis, x.ndim(), "Separate");
+    const size_t n_ys =
+            static_cast<size_t>(x.shape()[static_cast<size_t>(axis)]);
+    return FuncImpl<SeparateSubset>(axis, n_ys)({x});
 }
 
 // Change view
