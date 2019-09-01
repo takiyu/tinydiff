@@ -807,8 +807,8 @@ Variable Transpose(const Variable& x);
 Variable Swapaxes(const Variable& x, int axis1, int axis2);
 Variable BroadcastTo(const Variable& x, const Shape& shape);
 Variable SumTo(const Variable& x, const Shape& shape);
-// // Inverse
-// Variable Inv(const Variable& x);
+// Inverse
+Variable Inv(const Variable& x);
 
 }  // namespace F
 
@@ -5868,6 +5868,21 @@ struct SumToSubset : public Function::Subsetance {
     Shape x_shape;
 };
 
+// ---------------------------------- Inverse ----------------------------------
+struct InvSubset : public Function::Subsetance {
+    InvSubset() : Subsetance(1, 1, {}, {0}) {}
+    virtual ~InvSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        return {Inv(x[0])};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x;
+        NdArray invxT = Transpose(y[0]);
+        NdArray gx = Matmul(Matmul(-invxT, gy[0]), invxT);
+        return {gx};
+    }
+};
+
 // ------------------------------- Helper Class --------------------------------
 // Helper to replace default substance with implemented one
 template <typename S>
@@ -6118,6 +6133,11 @@ Variable BroadcastTo(const Variable& x, const Shape& shape) {
 
 Variable SumTo(const Variable& x, const Shape& shape) {
     return FuncImpl<SumToSubset>(shape)({x})[0];
+}
+
+// Inverse
+Variable Inv(const Variable& x) {
+    return FuncImpl<InvSubset>()({x})[0];
 }
 
 }  // namespace F

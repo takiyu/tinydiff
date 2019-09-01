@@ -1181,6 +1181,20 @@ TEST_CASE("AutoGrad") {
         CheckData(r2, "[15]");
     }
 
+    SECTION("Function Inverse (2d)") {
+        Variable v1 = NdArray::Arange(4).reshape(2, 2) + 1.f;
+        auto r0 = F::Inv(v1);
+        r0.backward();
+        CheckGrad(v1,
+                     "[[-0.5, 0.5],\n"
+                     " [0.5, -0.5]]",
+                     4);  // Low precision
+        CheckData(r0,
+                     "[[-2, 1],\n"
+                     " [1.5, -0.5]]",
+                     4);  // Low precision
+    }
+
     // -------------------- Arithmetic functions (complex) ---------------------
     SECTION("Arithmetic (complex chain)") {
         Variable v1 = {1.f, 2.f};
