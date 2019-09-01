@@ -410,14 +410,10 @@ static Variables RetainVariables(const Variables& vs,
 
 static Shape GedPaddedShape(const Shape& src_shape, const Shape& tgt_shape,
                             const Axis& axes, bool keepdims) {
-    const int ndim = static_cast<int>(tgt_shape.size());
+    const size_t ndim = tgt_shape.size();
     if (!(ndim == 0 || axes.empty() || keepdims)) {
-        // Normalize axis
-        Axis actual_axis;
-        for (auto&& axis : axes) {
-            actual_axis.push_back(0 <= axis ? axis : axis + ndim);
-        }
-        std::sort(actual_axis.begin(), actual_axis.end());
+        // Resolve axis (`ResolveAxis` is in tinyndarray)
+        const Axis& actual_axis = ResolveAxis(axes, ndim, "Axis backward");
         // Reconstruct shape
         Shape padded_shape = src_shape;
         for (auto&& axis : actual_axis) {
@@ -430,13 +426,11 @@ static Shape GedPaddedShape(const Shape& src_shape, const Shape& tgt_shape,
     }
 }
 
-static size_t PrepareSplit(const Shape& shape, int axis, const std::string& tag) {
-    const size_t axis_l = static_cast<size_t>(axis);
-    if (axis < 0 || shape.size() <= axis_l) {
-        throw std::runtime_error("Invalid axis to " + tag);
-    }
-    const size_t n_ys = static_cast<size_t>(shape[axis_l]);
-    return n_ys;
+static auto PrepareSplit(const Shape& shape, int axis,
+                         const std::string& name) {
+    axis = ResolveAxis(axis, shape.size(), name);
+    const size_t n_ys = static_cast<size_t>(shape[static_cast<size_t>(axis)]);
+    return std::make_tuple(axis, n_ys);
 }
 
 // =============================================================================
@@ -1562,7 +1556,8 @@ struct TransposeSubset : public Function::Subsetance {
 };
 
 struct SwapaxesSubset : public Function::Subsetance {
-    SwapaxesSubset(int axis1_, int axis2_) : Subsetance(1, 1, {}, {}), axis1(axis1_), axis2(axis2_) {}
+    SwapaxesSubset(int axis1_, int axis2_)
+        : Subsetance(1, 1, {}, {}), axis1(axis1_), axis2(axis2_) {}
     virtual ~SwapaxesSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {Swapaxes(x[0], axis1, axis2)};
@@ -1575,7 +1570,8 @@ struct SwapaxesSubset : public Function::Subsetance {
 };
 
 struct BroadcastToSubset : public Function::Subsetance {
-    BroadcastToSubset(const Shape& shape_) : Subsetance(1, 1, {}, {}), shape(shape_) {}
+    BroadcastToSubset(const Shape& shape_)
+        : Subsetance(1, 1, {}, {}), shape(shape_) {}
     virtual ~BroadcastToSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {BroadcastTo(x[0], shape)};
@@ -1588,7 +1584,8 @@ struct BroadcastToSubset : public Function::Subsetance {
 };
 
 struct SumToSubset : public Function::Subsetance {
-    SumToSubset(const Shape& shape_) : Subsetance(1, 1, {}, {}), shape(shape_) {}
+    SumToSubset(const Shape& shape_)
+        : Subsetance(1, 1, {}, {}), shape(shape_) {}
     virtual ~SumToSubset() {}
     virtual NdArrays forward(InNd x) override {
         return {SumTo(x[0], shape)};
@@ -1817,18 +1814,20 @@ Variable Concatenate(const std::vector<Variable>& xs, int axis) {
 }
 
 std::vector<Variable> Split(const Variable& x, int n_section, int axis) {
-    const size_t n_ys = PrepareSplit(x.shape(), axis, "Split");
-    return FuncImpl<SplitNSecSubset>(n_section, axis, n_ys)({x});
+    auto&& ps = PrepareSplit(x.shape(), axis, "Split");
+    return FuncImpl<SplitNSecSubset>(n_section, std::get<0>(ps),
+                                     std::get<1>(ps))({x});
 }
 
 std::vector<Variable> Split(const Variable& x, const Index& idxs, int axis) {
-    const size_t n_ys = PrepareSplit(x.shape(), axis, "Split");
-    return FuncImpl<SplitIdxsSubset>(idxs, axis, n_ys)({x});
+    auto&& ps = PrepareSplit(x.shape(), axis, "Split");
+    return FuncImpl<SplitIdxsSubset>(idxs, std::get<0>(ps),
+                                     std::get<1>(ps))({x});
 }
 
 std::vector<Variable> Separate(const Variable& x, int axis) {
-    const size_t n_ys = PrepareSplit(x.shape(), axis, "Separate");
-    return FuncImpl<SeparateSubset>(axis, n_ys)({x});
+    auto&& ps = PrepareSplit(x.shape(), axis, "Separate");
+    return FuncImpl<SeparateSubset>(std::get<0>(ps), std::get<1>(ps))({x});
 }
 
 // Change view
