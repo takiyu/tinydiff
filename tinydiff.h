@@ -798,10 +798,9 @@ Variable Squeeze(const Variable& x, const Axis& axes = {});
 Variable ExpandDims(const Variable& x, int axis);
 // Grouping functions
 Variable Stack(const std::vector<Variable>& xs, int axis = 0);
-// Variable Concatenate(const std::vector<Variable>& xs, int axis = 0);
-// std::vector<Variable> Split(const Variable& x, int n_section, int axis = 0);
-// std::vector<Variable> Split(const Variable& x, const Index& idxs, int axis =
-// 0);
+Variable Concatenate(const std::vector<Variable>& xs, int axis = 0);
+std::vector<Variable> Split(const Variable& x, int n_section, int axis = 0);
+std::vector<Variable> Split(const Variable& x, const Index& idxs, int axis = 0);
 std::vector<Variable> Separate(const Variable& x, int axis = 0);
 // Change view
 Variable Transpose(const Variable& x);
@@ -848,6 +847,43 @@ inline T ClipOp(const T& v, const T& lower, const T& upper) {
 template <typename F>
 inline auto ReverseOp(F op) {
     return [op](float a, float b) { return op(b, a); };  // Swap left and right
+}
+
+static int ResolveAxis(int axis, size_t ndim, const std::string& name) {
+    // Resolve negative
+    const int ndim_i = static_cast<int>(ndim);
+    if (axis < 0) {
+        axis = ndim_i + axis;
+    }
+    // Check range
+    if (axis < 0 || ndim_i <= axis) {
+        std::stringstream ss;
+        ss << "Invalid axes for " << name;
+        ss << " (" << ndim << "vs" << axis << ")";
+        throw std::runtime_error(ss.str());
+    }
+    return axis;
+}
+
+static Axis ResolveAxis(const Axis& axes, size_t ndim, const std::string& name,
+                        bool sort = false, bool sort_order_normal = true) {
+    // Resolve for each
+    Axis ret_axes;
+    ret_axes.reserve(axes.size());
+    for (auto&& axis : axes) {
+        ret_axes.push_back(ResolveAxis(axis, ndim, name));
+    }
+    // Sort axes
+    if (sort) {
+        if (sort_order_normal) {
+            // Normal order
+            std::sort(ret_axes.begin(), ret_axes.end());
+        } else {
+            // Inverse order
+            std::sort(ret_axes.begin(), ret_axes.end(), std::greater<int>());
+        }
+    }
+    return ret_axes;
 }
 
 static void GetParallelParams(int size, int& n_workers, int& n_batch,
@@ -1650,9 +1686,9 @@ NdArray ReduceAxisOne(const NdArray& src, const size_t axis, const float init_v,
 }
 
 template <typename F>
-NdArray ReduceAxis(const NdArray& src, const Axis& axes, bool keepdims,
+NdArray ReduceAxis(const NdArray& src, const Axis& axes_raw, bool keepdims,
                    const float init_v, F reduce_op) {
-    if (axes.size() == 0) {
+    if (axes_raw.size() == 0) {
         // No Axis -> Reduce all
         float ret_v = ReduceAxisAll(src.data(), src.size(), init_v, reduce_op);
         NdArray ret = {ret_v};
@@ -1663,20 +1699,18 @@ NdArray ReduceAxis(const NdArray& src, const Axis& axes, bool keepdims,
         }
         return ret;
     } else {
+        // Resolve axes (sort: on)
+        const Axis& axes = ResolveAxis(axes_raw, src.ndim(), "Reduce", true);
+
         // Check it is possible to reduce.
         Shape src_shape = src.shape();
         const Shape& ret_shape_pad = CheckReductable(src_shape, axes, keepdims);
-
-        // Sort axes
-        Axis sorted_axes = axes;
-        std::sort(sorted_axes.begin(), sorted_axes.end());
 
         // Reduce axes one by one
         NdArray ret;
         for (size_t i = 0; i < axes.size(); i++) {
             // From back
-            const size_t axis =
-                    static_cast<size_t>(sorted_axes[axes.size() - i - 1]);
+            const size_t axis = static_cast<size_t>(axes[axes.size() - i - 1]);
             // Reduce
             if (i == 0) {
                 ret = ReduceAxisOne(src, axis, init_v, reduce_op);
@@ -2131,9 +2165,9 @@ static NdArray CrossNdArray(const NdArray& lhs, const NdArray& rhs) {
 }
 
 // ----------------------- Utilities for NdArray (Shape) -----------------------
-static NdArray SqueezeNdArray(const NdArray& x, const Axis& axes) {
+static NdArray SqueezeNdArray(const NdArray& x, const Axis& axes_raw) {
     Shape ret_shape;
-    if (axes.empty()) {
+    if (axes_raw.empty()) {
         // Extract non zero dimensions
         for (auto&& s : x.shape()) {
             if (s != 1) {
@@ -2145,24 +2179,13 @@ static NdArray SqueezeNdArray(const NdArray& x, const Axis& axes) {
             ret_shape.push_back(1);
         }
     } else {
-        // Remove passed dimensions
-        // Normalize axis
-        Axis sorted_axes = axes;
-        const int n_dim = static_cast<int>(x.ndim());
-        for (size_t i = 0; i < sorted_axes.size(); i++) {
-            int& axis = sorted_axes[i];
-            if (axis < 0) {
-                axis = n_dim + axis;
-            }
-            if (n_dim <= axis) {
-                throw std::runtime_error("Invalid axis to squeeze (beyond)");
-            }
-        }
-        std::sort(sorted_axes.begin(), sorted_axes.end(), std::greater<int>());
+        // Resolve axes (sort: on (inverse))
+        const Axis& axes =
+                ResolveAxis(axes_raw, x.ndim(), "Squeeze", true, false);
         // Copy all dim
         ret_shape = x.shape();
         // Remove passed axes from the tail
-        for (auto&& axis : sorted_axes) {
+        for (auto&& axis : axes) {
             auto&& it = ret_shape.begin() + axis;
             if (*it != 1) {
                 throw std::runtime_error("Invalid axis to squeeze (not 1)");
@@ -2174,23 +2197,17 @@ static NdArray SqueezeNdArray(const NdArray& x, const Axis& axes) {
 }
 
 static NdArray ExpandDimsNdArray(const NdArray& x, int axis) {
-    // Check axis
-    Shape ret_shape = x.shape();
-    const int n_dim = static_cast<int>(x.ndim());
-    if (axis < 0) {
-        axis = n_dim + axis + 1;  // axis can be same as `n_dim`.
-    }
-    if (n_dim < axis) {
-        throw std::runtime_error("Invalid axis to expand dims");
-    }
+    // Resolve axes (axis can be same as `n_dim`)
+    axis = ResolveAxis(axis, x.ndim() + 1, "Expand dims");
     // Insert
+    Shape ret_shape = x.shape();
     ret_shape.insert(ret_shape.begin() + axis, 1);
     // Reshape
     return x.reshape(ret_shape);
 }
 
 // ----------------------- Utilities for NdArray (Stack) -----------------------
-static Shape CheckStackable(const std::vector<NdArray>& xs, int axis) {
+static Shape CheckStackable(const std::vector<NdArray>& xs) {
     // Check empty
     if (xs.empty()) {
         throw std::runtime_error("Need at least one array to stack");
@@ -2202,10 +2219,6 @@ static Shape CheckStackable(const std::vector<NdArray>& xs, int axis) {
             throw std::runtime_error("all input arrays must have the same "
                                      "shape");
         }
-    }
-    // Check axis
-    if (axis < 0 || static_cast<int>(xs.size()) < axis) {
-        throw std::runtime_error("Out of bounds for dimension to stack");
     }
     return shape;
 }
@@ -2231,8 +2244,10 @@ static auto ComputeStackSizes(size_t n_src, const Shape& src_shape, int axis) {
 }
 
 static NdArray StackNdArray(const std::vector<NdArray>& xs, int axis) {
+    // Resolve axes (axis can be same as the size)
+    axis = ResolveAxis(axis, xs.size() + 1, "Stack");
     // Check it is possible to stack
-    const Shape& src_shape = CheckStackable(xs, axis);
+    const Shape& src_shape = CheckStackable(xs);
 
     // Compute stack sizes
     auto stack_sizes = ComputeStackSizes(xs.size(), src_shape, axis);
@@ -2301,10 +2316,6 @@ static void CheckConcatenatable(const std::vector<NdArray>& xs, int axis) {
             }
         }
     }
-    // Check axis
-    if (axis < 0 || static_cast<int>(fst_shape.size()) <= axis) {
-        throw std::runtime_error("Out of bounds for dimension to concatenate");
-    }
 }
 
 static auto ComputeConcatSizes(const std::vector<NdArray>& xs, int axis) {
@@ -2350,6 +2361,8 @@ static auto ComputeConcatSizes(const std::vector<NdArray>& xs, int axis) {
 }
 
 static NdArray ConcatenateNdArray(const std::vector<NdArray>& xs, int axis) {
+    // Resolve axes
+    axis = ResolveAxis(axis, xs[0].ndim(), "Concatenate");
     // Check it is possible to concatenate
     CheckConcatenatable(xs, axis);
 
@@ -2397,12 +2410,6 @@ static NdArray ConcatenateNdArray(const std::vector<NdArray>& xs, int axis) {
 }
 
 // ----------------------- Utilities for NdArray (Split) -----------------------
-static void CheckSplitAxis(const NdArray& x, int axis) {
-    if (axis < 0 || static_cast<int>(x.shape().size()) <= axis) {
-        throw std::runtime_error("Invalid axis to split");
-    }
-}
-
 static std::vector<NdArray> SplitNdArrayImpl(const NdArray& x,
                                              const Index& idxs, int axis) {
     // Note: Axis must be checked previously.
@@ -2441,8 +2448,8 @@ static std::vector<NdArray> SplitNdArrayImpl(const NdArray& x,
 
 static std::vector<NdArray> SplitNdArray(const NdArray& x, int n_section,
                                          int axis) {
-    // Check split axis
-    CheckSplitAxis(x, axis);
+    // Resolve axes
+    axis = ResolveAxis(axis, x.ndim(), "Split");
     // Check splitting size
     const int dim_size = x.shape()[static_cast<size_t>(axis)];
     if (dim_size % n_section != 0) {
@@ -2462,15 +2469,15 @@ static std::vector<NdArray> SplitNdArray(const NdArray& x, int n_section,
 
 static std::vector<NdArray> SplitNdArray(const NdArray& x, const Index& idxs,
                                          int axis) {
-    // Check split axis
-    CheckSplitAxis(x, axis);
+    // Resolve axes
+    axis = ResolveAxis(axis, x.ndim(), "Split");
     // Split by indices
     return SplitNdArrayImpl(x, idxs, axis);
 }
 
 static std::vector<NdArray> SeparateNdArray(const NdArray& x, int axis) {
-    // Check split axis
-    CheckSplitAxis(x, axis);
+    // Resolve axes
+    axis = ResolveAxis(axis, x.ndim(), "Separate");
     // Get splitting size (== dim size)
     const int dim_size = x.shape()[static_cast<size_t>(axis)];
 
@@ -2542,19 +2549,11 @@ static NdArray SwapaxesNdArray(const NdArray& src, int axis1, int axis2) {
     const Shape& src_shape = src.shape();
     const size_t ndim = src_shape.size();
 
-    // Fix negative axis
-    if (axis1 < 0) {
-        axis1 = static_cast<int>(src.ndim()) + axis1;
-    }
-    if (axis2 < 0) {
-        axis2 = static_cast<int>(src.ndim()) + axis2;
-    }
-    // Check axis
-    const size_t axis1_l = static_cast<size_t>(axis1);
-    const size_t axis2_l = static_cast<size_t>(axis2);
-    if (ndim <= axis1_l || ndim <= axis2_l) {
-        throw std::runtime_error("Invalid axis for Swapaxes");
-    }
+    // Resolve axis
+    const size_t axis1_l =
+            static_cast<size_t>(ResolveAxis(axis1, src.ndim(), "Swapaxes"));
+    const size_t axis2_l =
+            static_cast<size_t>(ResolveAxis(axis2, src.ndim(), "Swapaxes"));
 
     // Create result shape
     Shape ret_shape = src_shape;
@@ -4682,6 +4681,15 @@ static Shape GedPaddedShape(const Shape& src_shape, const Shape& tgt_shape,
     }
 }
 
+static size_t PrepareSplit(const Shape& shape, int axis, const std::string& tag) {
+    const size_t axis_l = static_cast<size_t>(axis);
+    if (axis < 0 || shape.size() <= axis_l) {
+        throw std::runtime_error("Invalid axis to " + tag);
+    }
+    const size_t n_ys = static_cast<size_t>(shape[axis_l]);
+    return n_ys;
+}
+
 // =============================================================================
 // ============================ Variable Definition ============================
 // =============================================================================
@@ -5717,6 +5725,66 @@ struct StackSubset : public Function::Subsetance {
     const int axis;
 };
 
+struct ConcatenateSubset : public Function::Subsetance {
+    ConcatenateSubset(int axis_, size_t n_xs)
+        : Subsetance(n_xs, 1, {}, {}), axis(axis_) {}
+    virtual ~ConcatenateSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        // Store shapes for back
+        shapes.clear();
+        for (size_t i = 0; i < x.size(); i++) {
+            shapes.push_back(x[i].shape());
+        }
+        // Forward
+        return {Concatenate(x, axis)};
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        const size_t axis_l = static_cast<size_t>(axis);
+        // Create indices to split (Note: axis is checked by forwarding)
+        Index idxs;
+        int next_idx = 0;
+        for (size_t i = 0; i < shapes.size() - 1; i++) {
+            next_idx += shapes[i][axis_l];
+            idxs.push_back(next_idx);
+        }
+        // Backward
+        return Split(gy[0], idxs, axis);
+    }
+    const int axis;
+    std::vector<Shape> shapes;
+};
+
+struct SplitNSecSubset : public Function::Subsetance {
+    SplitNSecSubset(int n_section_, int axis_, size_t n_ys)
+        : Subsetance(1, n_ys, {}, {}), n_section(n_section_), axis(axis_) {}
+    virtual ~SplitNSecSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        return Split(x[0], n_section, axis);
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {Concatenate(gy, axis)};
+    }
+    const int n_section;
+    const int axis;
+};
+
+struct SplitIdxsSubset : public Function::Subsetance {
+    SplitIdxsSubset(const Index& idxs_, int axis_, size_t n_ys)
+        : Subsetance(1, n_ys, {}, {}), idxs(idxs_), axis(axis_) {}
+    virtual ~SplitIdxsSubset() {}
+    virtual NdArrays forward(InNd x) override {
+        return Split(x[0], idxs, axis);
+    }
+    virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
+        (void)x, (void)y;
+        return {Concatenate(gy, axis)};
+    }
+    const Index idxs;
+    const int axis;
+};
+
 struct SeparateSubset : public Function::Subsetance {
     SeparateSubset(int axis_, size_t n_ys)
         : Subsetance(1, n_ys, {}, {}), axis(axis_) {}
@@ -5995,12 +6063,22 @@ Variable Stack(const std::vector<Variable>& xs, int axis) {
     return FuncImpl<StackSubset>(axis, xs.size())(xs)[0];
 }
 
+Variable Concatenate(const std::vector<Variable>& xs, int axis) {
+    return FuncImpl<ConcatenateSubset>(axis, xs.size())(xs)[0];
+}
+
+std::vector<Variable> Split(const Variable& x, int n_section, int axis) {
+    const size_t n_ys = PrepareSplit(x.shape(), axis, "Split");
+    return FuncImpl<SplitNSecSubset>(n_section, axis, n_ys)({x});
+}
+
+std::vector<Variable> Split(const Variable& x, const Index& idxs, int axis) {
+    const size_t n_ys = PrepareSplit(x.shape(), axis, "Split");
+    return FuncImpl<SplitIdxsSubset>(idxs, axis, n_ys)({x});
+}
+
 std::vector<Variable> Separate(const Variable& x, int axis) {
-    const size_t axis_l = static_cast<size_t>(axis);
-    if (axis < 0 || x.ndim() <= axis_l) {
-        throw std::runtime_error("Invalid axis to separate");
-    }
-    const size_t n_ys = static_cast<size_t>(x.shape()[axis_l]);
+    const size_t n_ys = PrepareSplit(x.shape(), axis, "Separate");
     return FuncImpl<SeparateSubset>(axis, n_ys)({x});
 }
 
