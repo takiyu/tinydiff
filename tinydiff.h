@@ -5568,13 +5568,29 @@ struct MeanSubset : public Function::Subsetance {
     float multiplier = 0.f;
 };
 
+// Forward operator of MinMaxSubset
+template <bool Cond>
+NdArray ForwardMinMaxSubset(const NdArray& x, const Axis& axes, bool keepdims);
+
+template <>
+NdArray ForwardMinMaxSubset<true>(const NdArray& x, const Axis& axes,
+                                  bool keepdims) {
+    return Min(x, axes, keepdims);  // true -> min
+}
+
+template <>
+NdArray ForwardMinMaxSubset<false>(const NdArray& x, const Axis& axes,
+                                   bool keepdims) {
+    return Max(x, axes, keepdims);  // false -> max
+}
+
 template <bool IsMin>
 struct MinMaxSubset : public Function::Subsetance {
     MinMaxSubset(const Axis& axes_, bool keepdims_)
         : Subsetance(1, 1, {0}, {0}), axes(axes_), keepdims(keepdims_) {}
     virtual ~MinMaxSubset() {}
     virtual NdArrays forward(InNd x) override {
-        return {fwd<IsMin>(x[0])};
+        return {ForwardMinMaxSubset<IsMin>(x[0], axes, keepdims)};
     }
     virtual NdArrays backward(InNd x, InNd y, InNd gy) override {
         const Shape& pad_shape =
@@ -5582,16 +5598,6 @@ struct MinMaxSubset : public Function::Subsetance {
         NdArray cond = (x[0] == y[0].reshape(pad_shape));
         NdArray gx = BroadcastTo(gy[0].reshape(pad_shape), cond.shape());
         return {std::move(cond) * std::move(gx)};
-    }
-
-    // Forward operator
-    template <bool Cond>
-    NdArray fwd(const NdArray& x) {
-        return Min(x, axes, keepdims);  // true -> min
-    }
-    template <>
-    NdArray fwd<false>(const NdArray& x) {
-        return Max(x, axes, keepdims);  // false -> max
     }
 
     const Axis axes;
