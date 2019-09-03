@@ -658,7 +658,7 @@ public:
     Function getCreator() const;
     void clearData();
     void clearGrad();
-    void addGrad(const NdArray& grad);
+    void addGrad(NdArray&& grad);
 
     class Subsetance;
 
@@ -4811,7 +4811,7 @@ void Variable::backward(bool clear_grads) {
 
         // Accumulate gradients
         for (size_t i = 0; i < inputs.size(); i++) {
-            inputs[i].addGrad(in_grads[i]);
+            inputs[i].addGrad(std::move(in_grads[i]));
         }
 
         // Remove all members (input, output and rank)
@@ -4839,18 +4839,21 @@ void Variable::clearGrad() {
     m_sub->grad.resize({0});
 }
 
-void Variable::addGrad(const NdArray& grad) {
-    // Initialize its shape
-    if (m_sub->grad.empty()) {
-        m_sub->grad.resize(m_sub->shape);
-    }
+void Variable::addGrad(NdArray&& grad) {
     // Accumulate gradient for broadcasting
     //   Note: When broadcasting succeeded in forwarding operation, the
     //         broadcasted axes are not ones. Containing ones in the shapes
     //         means that the axes do not affect neither broadcasting nor any
     //         computation. Squeeze operation can omit the non-affective
     //         dimensions.
-    Squeeze(m_sub->grad) += Squeeze(grad);
+    if (m_sub->grad.empty()) {
+        // Initialize its shape
+        m_sub->grad.resize(m_sub->shape);
+        Squeeze(m_sub->grad) += Squeeze(std::move(grad));
+    } else {
+        // Accumulate
+        Squeeze(m_sub->grad) += Squeeze(std::move(grad));
+    }
 }
 
 // --------------------------------- Operators ---------------------------------
